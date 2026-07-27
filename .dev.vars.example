@@ -1,0 +1,26 @@
+# Wrangler / Worker secrets (copy to .dev.vars — never commit)
+# npm run cf:secrets  → uploads everything EXCEPT CLOUDFLARE_* lines
+
+# --- Cloudflare CLI only (not uploaded to Worker) ---
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=60982be87817726f0bbc988e9122e2b7
+
+APP_URL=https://wix.thainexus.co.th
+AUTH_CALLBACK=https://wix.thainexus.co.th/api/auth
+
+WIX_APP_ID=
+WIX_APP_SECRET=
+WIX_PUBLIC_KEY=
+
+JWT_KEY=
+ENCRYPTION_KEY=
+
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+
+THAI_NEXUS_FUNCTIONS_URL=https://app.thainexus.co.th/functions/
+THAI_NEXUS_TIMEOUT_MS=7000
+THAI_NEXUS_SHIPMENT_TIMEOUT_MS=15000
+
+NODE_ENV=production
+DEBUG_MODE=false

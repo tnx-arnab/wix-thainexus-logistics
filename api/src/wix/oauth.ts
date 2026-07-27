@@ -1,0 +1,109 @@
+/**
+ * Wix OAuth helpers (self-hosted app).
+ * Docs: https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/about-authentication
+ */
+
+export type WixTokenResponse = {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    token_type?: string;
+    instanceId?: string;
+    siteId?: string;
+    metaSiteId?: string;
+};
+
+function requireEnv(name: string): string {
+    const value = process.env[name]?.trim();
+    if (!value) throw new Error(`${name} is not set`);
+    return value;
+}
+
+/** Exchange install token / authorization code for access + refresh tokens. */
+export async function exchangeWixToken(
+    code: string,
+    redirectUri?: string
+): Promise<WixTokenResponse> {
+    const appId = requireEnv('WIX_APP_ID');
+    const appSecret = requireEnv('WIX_APP_SECRET');
+
+    const body: Record<string, string> = {
+        grant_type: 'authorization_code',
+        client_id: appId,
+        client_secret: appSecret,
+        code,
+    };
+    if (redirectUri?.trim()) {
+        body.redirect_uri = redirectUri.trim();
+    }
+
+    const res = await fetch('https://www.wixapis.com/oauth/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+
+    const data = (await res.json()) as WixTokenResponse & {
+        message?: string;
+        error?: string;
+        error_description?: string;
+        details?: unknown;
+    };
+    if (!res.ok || !data.access_token) {
+        const detail =
+            data.message ||
+            data.error_description ||
+            data.error ||
+            (data.details ? JSON.stringify(data.details) : '');
+        throw new Error(
+            detail
+                ? `Wix token exchange failed (${res.status}): ${detail}`
+                : `Wix token exchange failed (${res.status})`
+        );
+    }
+
+    return data;
+}
+
+export async function refreshWixToken(refreshToken: string): Promise<WixTokenResponse> {
+    const appId = requireEnv('WIX_APP_ID');
+    const appSecret = requireEnv('WIX_APP_SECRET');
+
+    const res = await fetch('https://www.wixapis.com/oauth/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            grant_type: 'refresh_token',
+            client_id: appId,
+            client_secret: appSecret,
+            refresh_token: refreshToken,
+        }),
+    });
+
+    const data = (await res.json()) as WixTokenResponse & { message?: string };
+    if (!res.ok || !data.access_token) {
+        throw new Error(data.message || `Wix refresh failed (${res.status})`);
+    }
+
+    return data;
+}
+
+/** Decode instance id from Wix instance query param (base64 JSON). */
+export function parseWixInstanceParam(instance: string): {
+    instanceId?: string;
+    siteId?: string;
+    metaSiteId?: string;
+} {
+    try {
+        const payload = instance.includes('.') ? instance.split('.')[1] : instance;
+        const json = Buffer.from(payload, 'base64url').toString('utf8');
+        const data = JSON.parse(json) as Record<string, unknown>;
+        return {
+            instanceId: (data.instanceId as string) || (data.instance_id as string),
+            siteId: (data.siteId as string) || (data.site_id as string),
+            metaSiteId: (data.metaSiteId as string) || (data.meta_site_id as string),
+        };
+    } catch {
+        return {};
+    }
+}

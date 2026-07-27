@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-[#f9fafb] text-gray-900;
+    }
+}
+
+.tnxl-card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden p-6;
+}
+
+.tnxl-input {
+    @apply w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all;
+}
+
+.tnxl-btn-primary {
+    @apply bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-hover transition-colors inline-flex items-center gap-2;
+}
+
+.tnxl-btn-secondary {
+    @apply bg-secondary text-white px-6 py-2 rounded-lg font-medium hover:bg-secondary-hover transition-colors inline-flex items-center gap-2;
+}
+
+.tnxl-skeleton {
+    @apply h-3 rounded bg-gradient-to-r from-gray-100 via-secondary/30 to-gray-100 bg-[length:200%_100%] animate-pulse;
+}
+
+@keyframes tnxl-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tnxl-slide-in {
+    animation: tnxl-slide-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}

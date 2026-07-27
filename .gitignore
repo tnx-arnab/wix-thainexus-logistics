@@ -1,0 +1,12 @@
+node_modules/
+.cursor/
+.next/
+dist/
+admin/dist/
+api/dist/
+.env
+.env.local
+.dev.vars
+.wrangler/
+*.log
+.DS_Store

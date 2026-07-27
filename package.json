@@ -1,0 +1,26 @@
+{
+  "name": "thai-nexus-wix",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "admin",
+    "api",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,admin -c blue,green \"npm run dev -w api\" \"npm run dev -w admin\"",
+    "dev:api": "npm run dev -w api",
+    "dev:admin": "npm run dev -w admin",
+    "build": "npm run build -w admin && npm run build -w api",
+    "start": "npm run start -w api",
+    "cf:build": "npm run build -w admin",
+    "cf:dev": "npm run cf:build && wrangler dev",
+    "cf:deploy": "npm run cf:build && wrangler deploy",
+    "cf:secrets": "grep -v '^CLOUDFLARE_' .dev.vars | grep -v '^#' | grep -v '^$' > .dev.vars.worker && wrangler secret bulk .dev.vars.worker && rm .dev.vars.worker",
+    "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wrangler": "^4.44.0"
+  }
+}
