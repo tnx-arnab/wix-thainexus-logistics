@@ -10,10 +10,12 @@ import {
 
 const router = Router();
 
-function traceLater(entry: Parameters<typeof logRateTrace>[0]) {
-    void logRateTrace(entry).catch((err) => {
+async function traceNow(entry: Parameters<typeof logRateTrace>[0]) {
+    try {
+        await logRateTrace(entry);
+    } catch (err) {
         console.warn('[rate_trace]', err instanceof Error ? err.message : err);
-    });
+    }
 }
 
 /**
@@ -53,7 +55,7 @@ async function handleGetShippingRates(req: any, res: any) {
         if (!meta.instanceId) {
             const diag = `jwt-parse-failed auth=${Boolean(auth)} bodyLen=${bodyText.length} ct=${String(req.headers['content-type'] || '')}`;
             console.warn('[SPI]', diag);
-            traceLater({
+            await traceNow({
                 phase: 'result',
                 path: req.path,
                 ok: false,
@@ -63,12 +65,12 @@ async function handleGetShippingRates(req: any, res: any) {
             return res.status(200).json({ shippingRates: [] });
         }
 
-        void logMerchantSpiEvent(meta.instanceId, {
+        await logMerchantSpiEvent(meta.instanceId, {
             phase: 'received',
             path: req.path,
             destination: String(dest.country || ''),
             items: wixReq.lineItems?.length ?? 0,
-        }).catch(() => {});
+        });
 
         console.info('[SPI hit]', {
             path: req.path,
@@ -79,7 +81,7 @@ async function handleGetShippingRates(req: any, res: any) {
             items: wixReq.lineItems?.length ?? 0,
         });
 
-        traceLater({
+        await traceNow({
             phase: 'received',
             path: req.path,
             store_id: meta.instanceId,
@@ -107,7 +109,7 @@ async function handleGetShippingRates(req: any, res: any) {
             hint: hint || undefined,
         });
 
-        traceLater({
+        await traceNow({
             phase: 'result',
             path: req.path,
             store_id: meta.instanceId,
@@ -117,7 +119,7 @@ async function handleGetShippingRates(req: any, res: any) {
             message: hint,
         });
 
-        void logMerchantSpiEvent(meta.instanceId, {
+        await logMerchantSpiEvent(meta.instanceId, {
             phase: 'result',
             path: req.path,
             destination: String(dest.country || ''),
@@ -126,13 +128,13 @@ async function handleGetShippingRates(req: any, res: any) {
             ms: Date.now() - started,
             ok: shippingRates.length > 0,
             message: hint,
-        }).catch(() => {});
+        });
 
         return res.status(200).json({ shippingRates });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'getShippingRates failed';
         console.error('[SPI getShippingRates]', req.path, message);
-        traceLater({
+        await traceNow({
             phase: 'result',
             path: req.path,
             ok: false,
