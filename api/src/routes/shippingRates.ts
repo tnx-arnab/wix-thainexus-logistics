@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { logRateTrace } from '@thai-nexus/shared';
+import { logRateTrace, logMerchantSpiEvent } from '@thai-nexus/shared';
 import { rawBodyMiddleware } from '../bodyMiddleware.js';
 import { extractBearerToken, parseSpiPayload } from '../wix/verify.js';
 import {
@@ -50,6 +50,26 @@ async function handleGetShippingRates(req: any, res: any) {
         const dest = wixReq.shippingDestination || {};
         const instance = meta.instanceId || '(missing)';
 
+        if (!meta.instanceId) {
+            const diag = `jwt-parse-failed auth=${Boolean(auth)} bodyLen=${bodyText.length} ct=${String(req.headers['content-type'] || '')}`;
+            console.warn('[SPI]', diag);
+            traceLater({
+                phase: 'result',
+                path: req.path,
+                ok: false,
+                message: diag,
+                duration_ms: Date.now() - started,
+            });
+            return res.status(200).json({ shippingRates: [] });
+        }
+
+        void logMerchantSpiEvent(meta.instanceId, {
+            phase: 'received',
+            path: req.path,
+            destination: String(dest.country || ''),
+            items: wixReq.lineItems?.length ?? 0,
+        }).catch(() => {});
+
         console.info('[SPI hit]', {
             path: req.path,
             instanceId: instance,
@@ -96,6 +116,18 @@ async function handleGetShippingRates(req: any, res: any) {
             ok: shippingRates.length > 0,
             message: hint,
         });
+
+        void logMerchantSpiEvent(meta.instanceId, {
+            phase: 'result',
+            path: req.path,
+            destination: String(dest.country || ''),
+            items: wixReq.lineItems?.length ?? 0,
+            quotes: shippingRates.length,
+            ms: Date.now() - started,
+            ok: shippingRates.length > 0,
+            message: hint,
+        }).catch(() => {});
+
         return res.status(200).json({ shippingRates });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'getShippingRates failed';

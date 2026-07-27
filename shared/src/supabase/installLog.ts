@@ -78,6 +78,75 @@ export type RateTraceEntry = {
  * Always-on trace of every /api/rate hit (independent of DEBUG_MODE and of success).
  * This is the source of truth for "did BigCommerce actually reach our endpoint?".
  */
+export type MerchantSpiEvent = {
+    phase: 'received' | 'result';
+    path?: string;
+    destination?: string;
+    items?: number;
+    quotes?: number;
+    ms?: number;
+    ok?: boolean;
+    message?: string;
+};
+
+const MAX_SPI_EVENTS_PER_STORE = 40;
+
+/** Always-on checkout SPI log visible in app Debug tab (not gated by DEBUG_MODE). */
+export async function logMerchantSpiEvent(
+    instanceId: string,
+    event: MerchantSpiEvent
+): Promise<void> {
+    const id = `spi_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const loggedAt = new Date().toISOString();
+
+    try {
+        const supabase = getSupabase();
+        const { error } = await supabase.from('debug_logs').insert({
+            id,
+            instance_id: instanceId,
+            logged_at: loggedAt,
+            data: { kind: 'spi_event', ...event },
+        });
+        if (error) {
+            console.error('[spi_event] insert failed:', error.message);
+            return;
+        }
+
+        const { data: rows } = await supabase
+            .from('debug_logs')
+            .select('id, logged_at')
+            .eq('instance_id', instanceId)
+            .contains('data', { kind: 'spi_event' })
+            .order('logged_at', { ascending: false })
+            .limit(MAX_SPI_EVENTS_PER_STORE + 10);
+
+        if (!rows || rows.length <= MAX_SPI_EVENTS_PER_STORE) return;
+        const toDelete = rows.slice(MAX_SPI_EVENTS_PER_STORE).map((r) => r.id);
+        await supabase.from('debug_logs').delete().in('id', toDelete);
+    } catch (err) {
+        console.error('[spi_event]', err instanceof Error ? err.message : err);
+    }
+}
+
+export async function listMerchantSpiEvents(
+    instanceId: string,
+    limit = 30
+): Promise<Array<{ logged_at: string } & MerchantSpiEvent>> {
+    const { data, error } = await getSupabase()
+        .from('debug_logs')
+        .select('logged_at, data')
+        .eq('instance_id', instanceId)
+        .contains('data', { kind: 'spi_event' })
+        .order('logged_at', { ascending: false })
+        .limit(limit);
+
+    if (error) throw error;
+    return (data || []).map((row) => ({
+        logged_at: row.logged_at,
+        ...(row.data as MerchantSpiEvent),
+    }));
+}
+
 export async function logRateTrace(entry: RateTraceEntry): Promise<void> {
     const id = `rtr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const loggedAt = new Date().toISOString();

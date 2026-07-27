@@ -210,3 +210,25 @@ export async function testConnection(apiToken?: string): Promise<{ valid: boolea
 
     return data;
 }
+
+export type MerchantSpiEventRow = {
+    logged_at: string;
+    phase: string;
+    path?: string;
+    destination?: string;
+    items?: number;
+    quotes?: number;
+    ms?: number;
+    ok?: boolean;
+    message?: string;
+};
+
+export async function fetchSpiTraces(): Promise<{
+    instanceId: string;
+    hint?: string;
+    merchantEvents: MerchantSpiEventRow[];
+    globalTraces: MerchantSpiEventRow[];
+}> {
+    const { data } = await api.get('/api/debug/spi-traces');
+    return data;
+}

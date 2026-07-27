@@ -9,18 +9,41 @@ import {
     Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { clearDebugCache, clearDebugLogs, fetchDebugLogs } from '../lib/api';
+import { clearDebugCache, clearDebugLogs, fetchDebugLogs, fetchSpiTraces, type MerchantSpiEventRow } from '../lib/api';
 import type { DebugLogEntry } from '../lib/types';
 
 export default function DebugPage({ instanceId }: { instanceId?: string }) {
     const [logs, setLogs] = useState<DebugLogEntry[]>([]);
+    const [spiEvents, setSpiEvents] = useState<MerchantSpiEventRow[]>([]);
+    const [spiHint, setSpiHint] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [message, setMessage] = useState<string | null>(null);
 
+    const loadSpi = useCallback(() => {
+        fetchSpiTraces()
+            .then((data) => {
+                setSpiEvents(data.merchantEvents || []);
+                setSpiHint(data.hint || null);
+                if (data.merchantEvents?.length) {
+                    console.info('[Thai Nexus SPI]', data.merchantEvents);
+                } else {
+                    console.warn(
+                        '[Thai Nexus SPI] No checkout calls for this store yet.',
+                        data.hint
+                    );
+                }
+            })
+            .catch((err) => {
+                setSpiEvents([]);
+                console.error('[Thai Nexus SPI]', err);
+            });
+    }, []);
+
     const load = useCallback(() => {
         setLoading(true);
+        loadSpi();
         fetchDebugLogs()
             .then((rows) =>
                 setLogs(
@@ -36,7 +59,7 @@ export default function DebugPage({ instanceId }: { instanceId?: string }) {
                 );
             })
             .finally(() => setLoading(false));
-    }, []);
+    }, [loadSpi]);
 
     useEffect(() => {
         load();
@@ -72,6 +95,48 @@ export default function DebugPage({ instanceId }: { instanceId?: string }) {
 
     return (
         <div className="space-y-6">
+            <div className="tnxl-card space-y-3">
+                <h2 className="text-lg font-semibold text-primary flex items-center gap-2">
+                    <Terminal className="w-5 h-5" />
+                    Checkout SPI log (always on)
+                </h2>
+                <p className="text-sm text-gray-600">
+                    Wix checkout does not run in this iframe. When shipping loads on the storefront,
+                    Wix calls <code className="text-xs bg-gray-100 px-1 rounded">POST /v1/getRates</code>{' '}
+                    on our server. Lines appear here and in DevTools → Console as{' '}
+                    <code className="text-xs">[Thai Nexus SPI]</code>.
+                </p>
+                {spiHint && (
+                    <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                        {spiHint}
+                    </p>
+                )}
+                {!spiHint && spiEvents.length > 0 && (
+                    <p className="text-sm text-green-700">
+                        Wix reached your app ({spiEvents.length} recent event(s)).
+                    </p>
+                )}
+                <div className="bg-gray-900 text-gray-100 rounded-lg p-4 font-mono text-xs max-h-64 overflow-y-auto space-y-2">
+                    {spiEvents.length === 0 ? (
+                        <p className="text-gray-400">
+                            No SPI events for instance {instanceId || '—'} yet. Enable Thai Nexus in
+                            Shipping → Manage Your Apps, then open checkout shipping step.
+                        </p>
+                    ) : (
+                        spiEvents.map((ev, idx) => (
+                            <div key={`${ev.logged_at}-${idx}`} className="border-b border-gray-700 pb-2">
+                                <span className="text-gray-400">{ev.logged_at}</span>{' '}
+                                <span className={ev.ok ? 'text-green-400' : 'text-yellow-400'}>
+                                    {ev.phase}
+                                </span>{' '}
+                                dest={ev.destination || '-'} items={ev.items ?? 0} quotes=
+                                {ev.quotes ?? '-'} {ev.message ? `— ${ev.message}` : ''}
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="bg-secondary p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
