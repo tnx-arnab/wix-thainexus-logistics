@@ -8,6 +8,24 @@ export type WixVerifiedClaims = {
     [key: string]: unknown;
 };
 
+export type SpiJwtDecodeResult = {
+    claims: WixVerifiedClaims;
+    verifyError?: string;
+    unsignedInstanceId?: string;
+};
+
+/** PEM from Wix Dev Center or Cloudflare secrets (literal \\n or real newlines). */
+export function normalizeWixPublicKeyPem(raw: string | undefined): string {
+    if (!raw?.trim()) return '';
+    let pem = raw.trim().replace(/\\n/g, '\n');
+    if (pem.includes('BEGIN PUBLIC KEY') || pem.includes('BEGIN RSA PUBLIC KEY')) {
+        return pem;
+    }
+    const body = pem.replace(/\s+/g, '');
+    const lines = body.match(/.{1,64}/g) || [body];
+    return `-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----`;
+}
+
 function audienceMatches(aud: unknown, appId: string): boolean {
     if (aud == null) return true;
     if (Array.isArray(aud)) return aud.map(String).includes(appId);
@@ -20,8 +38,20 @@ function assertWixJwtClaims(claims: WixVerifiedClaims): void {
     }
     const appId = process.env.WIX_APP_ID?.trim();
     if (appId && !audienceMatches(claims.aud, appId)) {
-        throw new Error('Invalid JWT aud');
+        throw new Error(
+            `Invalid JWT aud (expected App ID ${appId}, got ${JSON.stringify(claims.aud)})`
+        );
     }
+}
+
+function instanceIdFromClaims(claims: WixVerifiedClaims): string | undefined {
+    const data = (claims.data || claims) as Record<string, unknown>;
+    const metadata = (data.metadata || {}) as Record<string, unknown>;
+    const id =
+        (metadata.instanceId as string) ||
+        (claims.instanceId as string) ||
+        (data.instanceId as string);
+    return id ? String(id) : undefined;
 }
 
 /**
@@ -41,28 +71,38 @@ export function verifyWixJwt(token: string): WixVerifiedClaims {
         return {};
     }
 
-    const publicKey = process.env.WIX_PUBLIC_KEY?.replace(/\\n/g, '\n');
+    const publicKey = normalizeWixPublicKeyPem(process.env.WIX_PUBLIC_KEY);
     if (!publicKey) {
         throw new Error('WIX_PUBLIC_KEY is not set');
     }
 
     const claims = jwt.verify(token, publicKey, {
         algorithms: ['RS256'],
+        clockTolerance: 120,
     }) as WixVerifiedClaims;
     assertWixJwtClaims(claims);
     return claims;
 }
 
-/**
- * SPI JWT for checkout. Wix requires verified JWT (aud/iss/signature).
- * On failure return empty claims so checkout gets HTTP 200 + empty rates (no forged instanceId).
- */
-function decodeSpiJwtClaims(token: string): WixVerifiedClaims {
+/** SPI JWT decode with verify error detail for logs (no unsigned trust). */
+export function decodeSpiJwtClaims(token: string): SpiJwtDecodeResult {
     try {
-        return verifyWixJwt(token);
+        return { claims: verifyWixJwt(token) };
     } catch (err) {
-        console.warn('[SPI jwt]', err instanceof Error ? err.message : err);
-        return {};
+        const verifyError = err instanceof Error ? err.message : String(err);
+        let unsignedInstanceId: string | undefined;
+        try {
+            const decoded = jwt.decode(token) as WixVerifiedClaims | null;
+            if (decoded) {
+                unsignedInstanceId = instanceIdFromClaims(decoded);
+            }
+        } catch {
+            // ignore
+        }
+        console.warn('[SPI jwt]', verifyError, {
+            unsignedInstanceId: unsignedInstanceId || undefined,
+        });
+        return { claims: {}, verifyError, unsignedInstanceId };
     }
 }
 
@@ -77,9 +117,14 @@ export function parseSpiPayload(rawBody: unknown): {
     request: Record<string, unknown>;
     metadata: Record<string, unknown>;
     instanceId?: string;
+    verifyError?: string;
 } {
     if (typeof rawBody === 'string') {
-        const claims = decodeSpiJwtClaims(rawBody);
+        const trimmed = rawBody.trim();
+        if (trimmed.split('.').length !== 3) {
+            return { request: {}, metadata: {}, verifyError: 'body-not-a-jwt' };
+        }
+        const { claims, verifyError } = decodeSpiJwtClaims(trimmed);
         const data = (claims.data || claims) as Record<string, unknown>;
         const request = (data.request || {}) as Record<string, unknown>;
         const metadata = (data.metadata || {}) as Record<string, unknown>;
@@ -90,6 +135,7 @@ export function parseSpiPayload(rawBody: unknown): {
                 (metadata.instanceId as string) ||
                 (claims.instanceId as string) ||
                 undefined,
+            verifyError,
         };
     }
 

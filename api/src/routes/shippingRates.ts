@@ -42,7 +42,7 @@ async function handleGetShippingRates(req: any, res: any) {
             rawBody = auth;
         }
 
-        const { request, metadata, instanceId } = parseSpiPayload(rawBody);
+        const { request, metadata, instanceId, verifyError } = parseSpiPayload(rawBody);
         const meta: WixShippingMetadata = {
             ...(metadata as WixShippingMetadata),
             instanceId: instanceId || (metadata.instanceId as string | undefined),
@@ -53,7 +53,17 @@ async function handleGetShippingRates(req: any, res: any) {
         const instance = meta.instanceId || '(missing)';
 
         if (!meta.instanceId) {
-            const diag = `jwt-parse-failed auth=${Boolean(auth)} bodyLen=${bodyText.length} ct=${String(req.headers['content-type'] || '')}`;
+            const diag = [
+                verifyError ? `jwt: ${verifyError}` : 'jwt: no instanceId in payload',
+                `auth=${Boolean(auth)}`,
+                `bodyLen=${bodyText.length}`,
+                `ct=${String(req.headers['content-type'] || '')}`,
+                verifyError?.includes('signature') || verifyError?.includes('invalid')
+                    ? 'fix: re-copy WIX_PUBLIC_KEY from Wix Dev Center → npm run cf:secrets'
+                    : undefined,
+            ]
+                .filter(Boolean)
+                .join(' ');
             console.warn('[SPI]', diag);
             await traceNow({
                 phase: 'result',

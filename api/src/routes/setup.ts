@@ -11,6 +11,8 @@ import {
 } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
 
+import { normalizeWixPublicKeyPem } from '../wix/verify.js';
+
 const router = Router();
 
 /** Public install diagnostics (no secrets exposed). */
@@ -40,6 +42,11 @@ router.get('/', async (_req, res) => {
 
     const appId = process.env.WIX_APP_ID?.trim() || '';
 
+    const publicKeyRaw = process.env.WIX_PUBLIC_KEY?.trim() || '';
+    const publicKeyPem = normalizeWixPublicKeyPem(publicKeyRaw);
+    const publicKeyLooksValid =
+        publicKeyPem.includes('BEGIN PUBLIC KEY') || publicKeyPem.includes('BEGIN RSA PUBLIC KEY');
+
     res.json({
         ready:
             Boolean(appId) &&
@@ -53,6 +60,7 @@ router.get('/', async (_req, res) => {
             wix_app_id: Boolean(process.env.WIX_APP_ID),
             wix_app_secret: Boolean(process.env.WIX_APP_SECRET),
             wix_public_key: Boolean(process.env.WIX_PUBLIC_KEY),
+            wix_public_key_pem_ok: publicKeyLooksValid,
             jwt_key: Boolean(process.env.JWT_KEY),
             encryption_key: Boolean(process.env.ENCRYPTION_KEY),
             app_url: appUrl || null,
@@ -72,6 +80,8 @@ router.get('/', async (_req, res) => {
                 : 'Open Apps → Thai Nexus from the Wix Dashboard.',
         supabase_error: supabaseMessage,
         physical_override_migration: physicalOverrideColumn ? null : PHYSICAL_OVERRIDE_MIGRATION_SQL,
+        spi_jwt_hint:
+            'If spi-traces show jwt: invalid signature, paste Dev Center Public Key into .dev.vars WIX_PUBLIC_KEY (use \\n for newlines) and run npm run cf:secrets',
     });
 });
 
