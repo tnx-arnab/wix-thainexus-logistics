@@ -15,7 +15,11 @@ router.get('/webhook-status', async (req, res) => {
     }
 
     const logs = await listInstallLogs(50);
-    const orderWebhooks = logs.filter((l) => l.route === '/api/webhooks/orders');
+    const orderWebhooks = logs.filter(
+        (l) =>
+            l.route === '/api/webhooks/orders' &&
+            l.data?.instance_id === session.instanceId
+    );
 
     return res.json({
         instanceId: session.instanceId,

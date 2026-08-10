@@ -66,6 +66,7 @@ test('parseWixWebhookRequest unwraps REST JWT envelope', () => {
 });
 
 test('parseWixWebhookRequest accepts plain JSON in dev', () => {
+    process.env.WEBHOOK_SKIP_VERIFY = 'true';
     const body = {
         instanceId: 'inst-1',
         slug: 'payment_status_updated',
@@ -75,4 +76,17 @@ test('parseWixWebhookRequest accepts plain JSON in dev', () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.parsed.instanceId, 'inst-1');
+});
+
+test('parseWixWebhookRequest rejects plain JSON when verify is enabled', () => {
+    process.env.WEBHOOK_SKIP_VERIFY = '';
+    const body = {
+        instanceId: 'inst-1',
+        slug: 'payment_status_updated',
+        actionEvent: { body: { order: { id: 'o1', paymentStatus: 'PAID' } } },
+    };
+    const result = parseWixWebhookRequest(body);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.reason, 'missing-jwt-body');
 });

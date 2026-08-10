@@ -1,4 +1,9 @@
-import { extractBearerToken, verifyWixJwt, type WixVerifiedClaims } from './verify.js';
+import {
+    extractBearerToken,
+    verifyWixJwt,
+    webhookVerifySkipped,
+    type WixVerifiedClaims,
+} from './verify.js';
 
 export type WixWebhookParsed = {
     eventBody: Record<string, unknown>;
@@ -75,7 +80,12 @@ export function parseWixWebhookRequest(
     raw: unknown,
     authorization?: string
 ): { ok: true; parsed: WixWebhookParsed } | { ok: false; reason: string } {
-    if (raw && typeof raw === 'object' && !Buffer.isBuffer(raw)) {
+    if (
+        webhookVerifySkipped() &&
+        raw &&
+        typeof raw === 'object' &&
+        !Buffer.isBuffer(raw)
+    ) {
         const body = raw as Record<string, unknown>;
         if (body.slug || body.actionEvent) {
             const instanceId =
@@ -99,7 +109,7 @@ export function parseWixWebhookRequest(
         }
     }
 
-    if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+    if (webhookVerifySkipped() && typeof raw === 'string' && raw.trim().startsWith('{')) {
         try {
             const body = JSON.parse(raw) as Record<string, unknown>;
             const direct = parseWixWebhookRequest(body, authorization);
