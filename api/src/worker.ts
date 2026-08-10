@@ -1,6 +1,10 @@
 import { httpServerHandler } from 'cloudflare:node';
 import { bufferRequestBody } from './bufferRequestBody.js';
 import { createApp } from './app.js';
+import {
+    bindWorkerExecutionContext,
+    clearWorkerExecutionContext,
+} from './workerContext.js';
 
 /** Public root is not a storefront - Wix Dashboard opens with ?context=. */
 function blank404(): Response {
@@ -73,7 +77,12 @@ export default {
 
         if (isApi) {
             const apiRequest = await bufferRequestBody(request);
-            return apiHandler.fetch(apiRequest, env, ctx);
+            bindWorkerExecutionContext(ctx);
+            try {
+                return await apiHandler.fetch(apiRequest, env, ctx);
+            } finally {
+                clearWorkerExecutionContext();
+            }
         }
 
         const token = url.searchParams.get('token') || url.searchParams.get('code');

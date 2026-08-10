@@ -100,6 +100,7 @@ export interface ProductPhysicalResult {
     wixEditorHint?: string;
     saved?: boolean;
     savedOverride?: boolean;
+    ratesPersisted?: boolean;
     overrideError?: string;
     warning?: string;
     fromOverride?: boolean;

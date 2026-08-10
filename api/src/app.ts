@@ -2,7 +2,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import express, { Express } from 'express';
-import { jsonBodyMiddleware } from './bodyMiddleware.js';
+import { jsonBodyMiddleware, wixWebhookBodyMiddleware } from './bodyMiddleware.js';
 import configRouter from './routes/config.js';
 import oauthRouter from './routes/oauth.js';
 import productsRouter from './routes/products.js';
@@ -12,6 +12,7 @@ import shippingRouter from './routes/shipping.js';
 import shippingRatesRouter from './routes/shippingRates.js';
 import sessionRouter from './routes/session.js';
 import setupRouter from './routes/setup.js';
+import ordersRouter from './routes/orders.js';
 import webhooksRouter from './routes/webhooks.js';
 
 export type CreateAppOptions = {
@@ -24,7 +25,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     const app = express();
 
     app.use(cors({ origin: true, credentials: true }));
-    app.use('/api/webhooks', jsonBodyMiddleware(), webhooksRouter);
+    app.use('/api/webhooks', wixWebhookBodyMiddleware(), webhooksRouter);
     app.use(shippingRatesRouter);
     app.use(jsonBodyMiddleware());
 
@@ -56,6 +57,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     app.use('/api/config', configRouter);
     app.use('/api/products', productsRouter);
     app.use('/api/shipments', shipmentsRouter);
+    app.use('/api/orders', ordersRouter);
     app.use('/api/debug', debugRouter);
     app.use('/api/shipping', shippingRouter);
 

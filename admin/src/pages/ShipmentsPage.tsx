@@ -11,7 +11,7 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { fetchShipmentDetail, fetchShipments } from '../lib/api';
+import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, syncRecentOrders } from '../lib/api';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
 function statusClass(status: string | undefined, header = false): string {
@@ -47,6 +47,40 @@ export default function ShipmentsPage() {
     const [warning, setWarning] = useState<string | null>(null);
     const [selected, setSelected] = useState<ShipmentDetail | null>(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
+
+    const [syncing, setSyncing] = useState(false);
+
+    const runSyncFromWix = async () => {
+        setSyncing(true);
+        try {
+            const res = await syncRecentOrders(15);
+            const created = res.results.filter((r) => r.ok && !r.skipped);
+            const lines = res.results
+                .slice(0, 8)
+                .map((r) => `#${r.number || r.orderId}: ${r.reason}`)
+                .join('\n');
+            alert(
+                created.length
+                    ? `Created ${created.length} shipment(s) from Wix orders.\n${lines}`
+                    : `No new shipments.\n${lines || res.hint || 'Check webhook setup for future orders.'}`
+            );
+            setPage(1);
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Sync failed');
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const [webhookHint, setWebhookHint] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetchWebhookStatus()
+            .then((s) => {
+                if (s.orderWebhookHits === 0 && s.hint) setWebhookHint(s.hint);
+            })
+            .catch(() => {});
+    }, []);
 
     useEffect(() => {
         setLoading(true);
@@ -101,6 +135,12 @@ export default function ShipmentsPage() {
 
     return (
         <div className="space-y-6">
+            {webhookHint ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                    <p className="font-semibold">Wix has not called your order webhook yet</p>
+                    <p className="mt-1 text-amber-900/90">{webhookHint}</p>
+                </div>
+            ) : null}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="bg-secondary p-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -110,6 +150,14 @@ export default function ShipmentsPage() {
                             <p className="text-white/80 text-sm">{total || shipments.length} total</p>
                         </div>
                     </div>
+                    <button
+                        type="button"
+                        disabled={syncing}
+                        onClick={() => void runSyncFromWix()}
+                        className="text-sm bg-white/15 hover:bg-white/25 text-white px-3 py-2 rounded-lg disabled:opacity-50"
+                    >
+                        {syncing ? 'Syncing…' : 'Sync from Wix orders'}
+                    </button>
                 </div>
 
                 <div className="overflow-x-auto">

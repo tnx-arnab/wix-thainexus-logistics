@@ -16,8 +16,8 @@
     "cf:build": "npm run build -w admin",
     "cf:dev": "npm run cf:build && wrangler dev",
     "cf:deploy": "npm run cf:build && wrangler deploy",
-    "cf:secrets": "grep -v '^CLOUDFLARE_' .dev.vars | grep -v '^#' | grep -v '^$' > .dev.vars.worker && wrangler secret bulk .dev.vars.worker && rm .dev.vars.worker",
-    "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts"
+    "cf:secrets": "node scripts/cf-secrets-bulk.mjs",
+    "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

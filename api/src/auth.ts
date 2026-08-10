@@ -117,14 +117,10 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
         }
     } else {
         const fromDashboard = instanceIdFromDashboardQuery(context);
-        const trimmed = context.trim();
-        if (fromDashboard) {
-            instanceId = fromDashboard;
-        } else if (UUID_RE.test(trimmed)) {
-            instanceId = trimmed;
-        } else {
+        if (!fromDashboard) {
             return null;
         }
+        instanceId = fromDashboard;
         user = { id: 'owner', email: 'merchant@wix.com' };
         owner = user;
     }

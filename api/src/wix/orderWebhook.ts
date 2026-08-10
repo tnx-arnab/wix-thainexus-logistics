@@ -35,8 +35,25 @@ function paymentStatusFromPayload(payload: Record<string, unknown>): string {
     return raw ? String(raw).toUpperCase() : '';
 }
 
+function webhookSlug(body: Record<string, unknown>): string {
+    return String(body.slug || body.eventType || '').toLowerCase();
+}
+
+const BLOCKED_PAYMENT_FOR_SHIPMENT = new Set([
+    'CANCELED',
+    'DECLINED',
+    'FULLY_REFUNDED',
+]);
+
+function isOrderCreatedWebhook(slug: string): boolean {
+    if (slug === 'created' || slug.endsWith('.created')) return true;
+    if (slug.includes('order_created') || slug.includes('order-created')) return true;
+    if (slug.includes('wix.ecom.v1.order_created')) return true;
+    return false;
+}
+
 /**
- * Unwrap Wix JWT webhook bodies (e.g. eCommerce Payment status updated).
+ * Unwrap Wix JWT webhook bodies (payment status updated, order created, legacy order paid).
  * Returns skipReason when the event should not create shipments.
  */
 export function normalizeOrderWebhookBody(body: Record<string, unknown>): {
@@ -49,9 +66,15 @@ export function normalizeOrderWebhookBody(body: Record<string, unknown>): {
         payload = actionEvent.body as Record<string, unknown>;
     }
 
-    const slug = String(body.slug || '').toLowerCase();
+    const createdEvent = body.createdEvent as { entity?: Record<string, unknown> } | undefined;
+    if (createdEvent?.entity && typeof createdEvent.entity === 'object') {
+        payload = { order: createdEvent.entity };
+    }
+
+    const slug = webhookSlug(body);
     const isPaymentStatusEvent =
         slug.includes('payment_status') || slug.includes('payment-status');
+    const isCreatedEvent = isOrderCreatedWebhook(slug);
 
     const status = paymentStatusFromPayload(payload);
 
@@ -59,8 +82,21 @@ export function normalizeOrderWebhookBody(body: Record<string, unknown>): {
         if (status !== 'PAID') {
             return { payload, skipReason: status ? 'not-paid' : 'missing-payment-status' };
         }
+    } else if (isCreatedEvent) {
+        if (status && BLOCKED_PAYMENT_FOR_SHIPMENT.has(status)) {
+            return { payload, skipReason: `blocked-${status.toLowerCase()}` };
+        }
     } else if (status && status !== 'PAID') {
         return { payload, skipReason: 'not-paid' };
+    } else if (!status) {
+        const paidSlug =
+            slug.includes('paid') ||
+            slug.includes('order_paid') ||
+            slug.includes('order_approved') ||
+            slug.includes('order-approved');
+        if (!paidSlug) {
+            return { payload, skipReason: 'missing-payment-status' };
+        }
     }
 
     if (payload.order && typeof payload.order === 'object') {
@@ -81,11 +117,26 @@ function textIncludesThaiNexus(value: string | undefined): boolean {
     return v.includes('thai nexus') || v.includes('thainexus');
 }
 
+const TN_SPI_RATE_CODES = new Set(['prime_ddp', 'priority_ddp', 'flex_dap']);
+
+function isThaiNexusRateCode(code: string | undefined): boolean {
+    if (!code?.trim()) return false;
+    const n = normalizeServiceId(code);
+    if (TN_SPI_RATE_CODES.has(n)) return true;
+    if (n.startsWith('thainexus_')) return true;
+    return n.endsWith('_ddp') || n.endsWith('_dap');
+}
+
 async function isThaiNexusShippingMethod(
     instanceId: string,
     methodTitle: string | undefined,
-    methodCode: string | undefined
+    methodCode: string | undefined,
+    carrierId?: string
 ): Promise<boolean> {
+    const appId = process.env.WIX_APP_ID?.trim();
+    if (appId && carrierId && carrierId === appId) return true;
+
+    if (isThaiNexusRateCode(methodCode)) return true;
     if (textIncludesThaiNexus(methodTitle) || textIncludesThaiNexus(methodCode)) {
         return true;
     }
@@ -122,6 +173,7 @@ function extractOrderId(payload: Record<string, unknown>): string | null {
 function extractShippingMethod(payload: Record<string, unknown>): {
     title?: string;
     code?: string;
+    carrierId?: string;
 } {
     const order =
         (payload.order as Record<string, unknown>) ||
@@ -143,6 +195,10 @@ function extractShippingMethod(payload: Record<string, unknown>): {
             (carrier.name as string) ||
             (shippingInfo.title as string),
         code: (carrier.code as string) || (shippingInfo.code as string),
+        carrierId:
+            (shippingInfo.carrierId as string) ||
+            (carrier.carrierId as string) ||
+            (shippingInfo.carrier_id as string),
     };
 }
 
@@ -232,8 +288,36 @@ export async function processOrderWebhook(
         return { ok: false, reason: 'missing-order-id' };
     }
 
-    const existing = await getOrderShipments(instanceId, orderId);
-    if (existing && isOrderShipmentRecordComplete(existing)) {
+    let shipmentRecord = await getOrderShipments(instanceId, orderId);
+    if (shipmentRecord && isOrderShipmentRecordComplete(shipmentRecord)) {
+        return { ok: false, reason: 'already-created' };
+    }
+    if (shipmentRecord && shipmentRecord.complete === false) {
+        const createdMs = shipmentRecord.createdAt ? Date.parse(shipmentRecord.createdAt) : 0;
+        const ageMs = createdMs ? Date.now() - createdMs : 0;
+        const pending =
+            (shipmentRecord.requestNumbers?.length ?? 0) === 0 &&
+            ageMs >= 0 &&
+            ageMs < 120_000;
+        if (pending) {
+            return { ok: false, reason: 'processing' };
+        }
+    }
+
+    if (!shipmentRecord) {
+        await saveOrderShipments({
+            orderId: String(orderId),
+            instanceId,
+            requestNumbers: [],
+            shipments: [],
+            complete: false,
+            expectedBoxCount: 0,
+            createdAt: new Date().toISOString(),
+        });
+        shipmentRecord = await getOrderShipments(instanceId, orderId);
+    }
+
+    if (shipmentRecord && isOrderShipmentRecordComplete(shipmentRecord)) {
         return { ok: false, reason: 'already-created' };
     }
 
@@ -248,7 +332,14 @@ export async function processOrderWebhook(
     }
 
     const method = extractShippingMethod(payload);
-    if (!(await isThaiNexusShippingMethod(instanceId, method.title, method.code))) {
+    if (
+        !(await isThaiNexusShippingMethod(
+            instanceId,
+            method.title,
+            method.code,
+            method.carrierId
+        ))
+    ) {
         return { ok: false, reason: 'not-thai-nexus-method' };
     }
 
@@ -324,7 +415,7 @@ export async function processOrderWebhook(
         return { ok: false, reason: 'ineligible-products' };
     }
 
-    const startBoxIndex = existing?.requestNumbers?.length || 0;
+    const startBoxIndex = shipmentRecord?.requestNumbers?.length || 0;
 
     try {
         const result = await createShipmentsForOrder({
@@ -340,11 +431,11 @@ export async function processOrderWebhook(
         });
 
         const requestNumbers = [
-            ...(existing?.requestNumbers || []),
+            ...(shipmentRecord?.requestNumbers || []),
             ...result.created.map((c) => c.request_number),
         ];
         const shipments = [
-            ...(existing?.shipments || []),
+            ...(shipmentRecord?.shipments || []),
             ...result.created,
         ];
         const complete =
@@ -356,10 +447,10 @@ export async function processOrderWebhook(
             requestNumbers,
             shipments,
             packedBoxes: result.packedBoxes,
-            errors: [...(existing?.errors || []), ...result.errors],
+            errors: [...(shipmentRecord?.errors || []), ...result.errors],
             expectedBoxCount: result.expectedBoxCount,
             complete,
-            createdAt: existing?.createdAt || new Date().toISOString(),
+            createdAt: shipmentRecord?.createdAt || new Date().toISOString(),
         };
         await saveOrderShipments(record);
 

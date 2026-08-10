@@ -17,6 +17,8 @@ export type QuoteParams = {
     width_cm: number;
     height_cm: number;
     is_document: boolean;
+    /** Default true. Checkout SPI sets false for faster apiQuote (still real-time rates). */
+    refresh?: boolean;
 };
 
 /** BigCommerce times out carrier rate calls quickly; never let an upstream hang block the response. */
@@ -61,6 +63,8 @@ export async function apiQuote(params: QuoteParams): Promise<{ quotes?: ThaiNexu
                 width_cm: params.width_cm,
                 height_cm: params.height_cm,
                 is_document: params.is_document,
+                refresh: params.refresh !== false,
+                requested_at: new Date().toISOString(),
             }),
         },
         UPSTREAM_TIMEOUT_MS,

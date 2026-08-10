@@ -161,6 +161,7 @@ router.put('/:id/physical', async (req, res) => {
             readyForRates: ready,
             saved: true,
             savedOverride,
+            ratesPersisted: !hasOverrideColumn || savedOverride,
             overrideError,
             warning: warnings.length ? warnings.join(' ') : undefined,
             wixWeightVisible: Boolean(physical.weightKg && !physical.fromOverride),

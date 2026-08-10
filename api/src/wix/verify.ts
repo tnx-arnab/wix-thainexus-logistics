@@ -1,5 +1,10 @@
 import jwt from 'jsonwebtoken';
 
+export function webhookVerifySkipped(): boolean {
+    const v = process.env.WEBHOOK_SKIP_VERIFY?.trim().toLowerCase();
+    return v === 'true' || v === '1';
+}
+
 export type WixVerifiedClaims = {
     instanceId?: string;
     aud?: string;
@@ -44,12 +49,16 @@ function assertWixJwtClaims(claims: WixVerifiedClaims): void {
     }
 }
 
-function instanceIdFromClaims(claims: WixVerifiedClaims): string | undefined {
-    const data = (claims.data || claims) as Record<string, unknown>;
+/** Instance id from verified (or decoded) Wix JWT claims. */
+export function instanceIdFromWixClaims(
+    claims: WixVerifiedClaims | Record<string, unknown>
+): string | undefined {
+    const c = claims as WixVerifiedClaims;
+    const data = (c.data || c) as Record<string, unknown>;
     const metadata = (data.metadata || {}) as Record<string, unknown>;
     const id =
         (metadata.instanceId as string) ||
-        (claims.instanceId as string) ||
+        (c.instanceId as string) ||
         (data.instanceId as string);
     return id ? String(id) : undefined;
 }
@@ -59,7 +68,7 @@ function instanceIdFromClaims(claims: WixVerifiedClaims): string | undefined {
  * Local: WEBHOOK_SKIP_VERIFY=true skips signature checks.
  */
 export function verifyWixJwt(token: string): WixVerifiedClaims {
-    if (process.env.WEBHOOK_SKIP_VERIFY === 'true' || process.env.WEBHOOK_SKIP_VERIFY === '1') {
+    if (webhookVerifySkipped()) {
         try {
             const parts = token.split('.');
             if (parts.length >= 2) {
@@ -94,7 +103,7 @@ export function decodeSpiJwtClaims(token: string): SpiJwtDecodeResult {
         try {
             const decoded = jwt.decode(token) as WixVerifiedClaims | null;
             if (decoded) {
-                unsignedInstanceId = instanceIdFromClaims(decoded);
+                unsignedInstanceId = instanceIdFromWixClaims(decoded);
             }
         } catch {
             // ignore
@@ -140,6 +149,13 @@ export function parseSpiPayload(rawBody: unknown): {
     }
 
     if (rawBody && typeof rawBody === 'object') {
+        if (!webhookVerifySkipped()) {
+            return {
+                request: {},
+                metadata: {},
+                verifyError: 'unsigned-json-spi-body',
+            };
+        }
         const body = rawBody as Record<string, unknown>;
         if (typeof body.data === 'string') {
             return parseSpiPayload(body.data);

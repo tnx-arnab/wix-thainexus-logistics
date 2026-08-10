@@ -7,6 +7,7 @@ import {
     type WixGetShippingRatesRequest,
     type WixShippingMetadata,
 } from '../wix/wixShippingRatesAdapter.js';
+import { normalizeWixShippingDestination } from '../wix/wixShippingDestination.js';
 
 const router = Router();
 
@@ -49,7 +50,7 @@ async function handleGetShippingRates(req: any, res: any) {
         };
 
         const wixReq = request as WixGetShippingRatesRequest;
-        const dest = wixReq.shippingDestination || {};
+        const dest = normalizeWixShippingDestination(wixReq.shippingDestination);
         const instance = meta.instanceId || '(missing)';
 
         if (!meta.instanceId) {
@@ -102,15 +103,9 @@ async function handleGetShippingRates(req: any, res: any) {
             user_agent: req.headers['user-agent'],
         });
 
-        const { shippingRates, hint } = await Promise.race([
-            calculateWixShippingRates(wixReq, meta),
-            new Promise<{ shippingRates: []; hint: string }>((resolve) =>
-                setTimeout(
-                    () => resolve({ shippingRates: [], hint: 'spi-timeout-8s' }),
-                    8000
-                )
-            ),
-        ]);
+        const { shippingRates, hint } = await calculateWixShippingRates(wixReq, meta);
+
+        const rateCodes = shippingRates.map((r) => r.code);
 
         console.info('[SPI result]', {
             instanceId: instance,
@@ -138,8 +133,10 @@ async function handleGetShippingRates(req: any, res: any) {
             ms: Date.now() - started,
             ok: shippingRates.length > 0,
             message: hint,
+            rateCodes: rateCodes.length ? rateCodes : undefined,
         });
 
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         return res.status(200).json({ shippingRates });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'getShippingRates failed';

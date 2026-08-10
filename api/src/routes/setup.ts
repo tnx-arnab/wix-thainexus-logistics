@@ -8,6 +8,7 @@ import {
     validateStoreReadyForRates,
     supabaseHasPhysicalOverrideColumn,
     PHYSICAL_OVERRIDE_MIGRATION_SQL,
+    isDebugEnabled,
 } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
 
@@ -135,13 +136,22 @@ router.get('/rates-ready', async (req, res) => {
     });
 });
 
-router.get('/spi-traces', async (_req, res) => {
+router.get('/spi-traces', async (req, res) => {
+    if (!isDebugEnabled()) {
+        return res.status(404).json({ message: 'Not found' });
+    }
+    const session = await getSession(req);
+    if (!session) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
     try {
         const traces = await listRateTraces(50);
+        const forStore = traces.filter((t) => t.store_id === session.instanceId);
         res.json({
             hint: 'Refresh checkout shipping step, then reload this URL.',
-            count: traces.length,
-            traces: traces.map((t) => ({
+            count: forStore.length,
+            instanceId: session.instanceId,
+            traces: forStore.map((t) => ({
                 at: t.logged_at,
                 phase: t.phase,
                 path: t.path,
@@ -164,14 +174,25 @@ router.get('/spi-traces', async (_req, res) => {
     }
 });
 
-router.get('/logs', async (_req, res) => {
+router.get('/logs', async (req, res) => {
+    if (!isDebugEnabled()) {
+        return res.status(404).json({ message: 'Not found' });
+    }
+    const session = await getSession(req);
+    if (!session) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
     try {
         const logs = await listInstallLogs(40);
-        const authHits = logs.filter((l) => l.route === '/api/auth');
+        const forStore = logs.filter(
+            (l) => !l.instance_id || l.instance_id === session.instanceId
+        );
+        const authHits = forStore.filter((l) => l.route === '/api/auth');
         const lastAuth = authHits[0];
 
         res.json({
-            count: logs.length,
+            count: forStore.length,
+            instanceId: session.instanceId,
             install_logs_table_ok: true,
             summary: lastAuth
                 ? {
@@ -182,7 +203,7 @@ router.get('/logs', async (_req, res) => {
                 : {
                       hint: 'No /api/auth yet. Install the app from Wix to create the first OAuth row.',
                   },
-            logs: logs.map((l) => ({
+            logs: forStore.map((l) => ({
                 at: l.logged_at,
                 route: l.route,
                 ok: l.ok,

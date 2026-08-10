@@ -87,6 +87,7 @@ export type MerchantSpiEvent = {
     ms?: number;
     ok?: boolean;
     message?: string;
+    rateCodes?: string[];
 };
 
 const MAX_SPI_EVENTS_PER_STORE = 40;

@@ -10,10 +10,14 @@ AUTH_CALLBACK=https://wix.thainexus.co.th/api/auth
 
 WIX_APP_ID=
 WIX_APP_SECRET=
+# Single line with \\n between BEGIN/END lines, or multiline value (scripts/cf-secrets-bulk.mjs).
 WIX_PUBLIC_KEY=
 
 JWT_KEY=
 ENCRYPTION_KEY=
+
+# Local only: trust plain ?instanceId= UUID (production uses Wix-signed instance JWT).
+# ALLOW_PLAIN_INSTANCE_ID=true
 
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=

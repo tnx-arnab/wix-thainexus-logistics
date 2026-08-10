@@ -2,7 +2,6 @@ import { calculateTotalCommission } from '../commission.js';
 import { convertFromThb } from '../currency.js';
 import { appendDebugLog, isDebugEnabled } from '../supabase/debugLog.js';
 import { packItems } from '../packing.js';
-import { getCachedQuotes, setCachedQuotes } from '../quoteCache.js';
 import { DebugApiCall, DebugFinalQuote, DebugLogBox, DebugLogProduct } from '../types/debug.js';
 import {
     BcCarrierQuote,
@@ -14,7 +13,6 @@ import { apiQuote, QuoteParams } from './client.js';
 import {
     CARRIER_CODE,
     CARRIER_DISPLAY_NAME,
-    DEFAULT_QUOTE_TTL_SECONDS,
     classifyServiceLevel,
     dispatchDateIso,
     formatServiceDisplayName,
@@ -41,6 +39,8 @@ export type CalculateRatesOptions = {
     resolveBoxedProductFlags?: ProductFlagsResolver;
     /** BigCommerce connection_options.api_token - overrides stored token when set. */
     apiToken?: string | null;
+    /** When false, apiQuote skips refresh=true (faster Wix checkout SPI). */
+    refreshQuotes?: boolean;
 };
 
 function empty(message: string, type: 'ERROR' | 'WARNING' | 'INFO' = 'WARNING'): BcRateResponse {
@@ -109,29 +109,14 @@ function quotePayload(params: QuoteParams): Record<string, unknown> {
     };
 }
 
-async function apiQuoteCached(
-    instanceId: string,
-    params: QuoteParams
+async function apiQuoteLive(
+    _instanceId: string,
+    params: QuoteParams,
+    refreshQuotes = true
 ): Promise<{ quotes: ThaiNexusQuote[]; apiCall: DebugApiCall }> {
     const payload = quotePayload(params);
-    const cached = getCachedQuotes(instanceId, payload);
-
-    if (cached) {
-        return {
-            quotes: cached as ThaiNexusQuote[],
-            apiCall: {
-                endpoint: 'apiQuote',
-                status: 200,
-                payload: { ...payload, api_token: '[REDACTED]' },
-                response: { quotes: cached, cached: true },
-                cached: true,
-            },
-        };
-    }
-
-    const response = await apiQuote(params);
+    const response = await apiQuote({ ...params, refresh: refreshQuotes });
     const quotes = response.quotes || [];
-    setCachedQuotes(instanceId, payload, quotes);
 
     return {
         quotes,
@@ -241,29 +226,27 @@ export async function calculateRates(
     }
 
     const apiCalls: DebugApiCall[] = [];
-    const boxQuoteResults: ThaiNexusQuote[][] = [];
+    const refreshQuotes = options.refreshQuotes !== false;
+    const boxQuoteResults = await Promise.all(
+        packing.boxes.map(async (box) => {
+            const params: QuoteParams = {
+                apiToken: token,
+                country: destinationCountry,
+                state: dest.state_iso2 || '',
+                postcode: dest.zip || '',
+                city: dest.city || '',
+                actual_weight_kg: box.weight,
+                length_cm: box.length,
+                width_cm: box.width,
+                height_cm: box.height,
+                is_document: box.isDocument,
+            };
 
-    for (const box of packing.boxes) {
-        // PackedBox contract: length/width/height are the chosen box's inner
-        // dims and weight includes the box's empty weight - i.e. the parcel as
-        // the courier will receive it (drives volumetric weight correctly).
-        const params: QuoteParams = {
-            apiToken: token,
-            country: destinationCountry,
-            state: dest.state_iso2 || '',
-            postcode: dest.zip || '',
-            city: dest.city || '',
-            actual_weight_kg: box.weight,
-            length_cm: box.length,
-            width_cm: box.width,
-            height_cm: box.height,
-            is_document: box.isDocument,
-        };
-
-        const { quotes, apiCall } = await apiQuoteCached(storeId, params);
-        apiCalls.push(apiCall);
-        boxQuoteResults.push(quotes);
-    }
+            const { quotes, apiCall } = await apiQuoteLive(storeId, params, refreshQuotes);
+            apiCalls.push(apiCall);
+            return quotes;
+        })
+    );
 
     const aggregated = mergeQuotes(boxQuoteResults);
     const boxCount = packing.boxes.length;
@@ -338,7 +321,7 @@ export async function calculateRates(
     const quotes: BcCarrierQuote[] = [];
     for (const [, entry] of quotesByCourier) {
         quotes.push({
-            code: entry.serviceLevel,
+            code: entry.courierSlug,
             rate_id: `tn_${storeId}_${entry.courierSlug}`,
             display_name: formatServiceDisplayName(entry.displayName),
             description: entry.transit != null ? undefined : entry.description,
@@ -417,6 +400,5 @@ export async function calculateRates(
         quote_id: `tn_${Date.now()}`,
         messages,
         carrier_quotes: [{ carrier_info: CARRIER, quotes }],
-        ttl: DEFAULT_QUOTE_TTL_SECONDS,
     };
 }

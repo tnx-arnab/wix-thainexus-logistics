@@ -168,11 +168,12 @@ export default function DebugPage({ instanceId }: { instanceId?: string }) {
                         </button>
                         <button
                             type="button"
-                            onClick={handleClearCache}
-                            className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-sm inline-flex items-center gap-2"
+                            disabled
+                            title="Quote caching disabled — checkout always uses live Thai Nexus quotes."
+                            className="bg-white/10 text-white/50 px-3 py-2 rounded-lg text-sm inline-flex items-center gap-2 cursor-not-allowed"
                         >
                             <Zap size={16} />
-                            Clear cache
+                            Cache off (live rates)
                         </button>
                         <button
                             type="button"

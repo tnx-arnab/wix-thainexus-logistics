@@ -113,6 +113,24 @@ export async function saveProductPhysical(
     return data;
 }
 
+export async function fetchWebhookStatus(): Promise<{
+    orderWebhookHits: number;
+    lastOrderWebhook: { message?: string; ok?: boolean; created_at?: string } | null;
+    hint?: string;
+}> {
+    const { data } = await api.get('/api/orders/webhook-status');
+    return data;
+}
+
+export async function syncRecentOrders(limit = 10): Promise<{
+    scanned: number;
+    results: Array<{ orderId: string; number?: string; ok: boolean; reason: string; skipped?: boolean }>;
+    hint?: string;
+}> {
+    const { data } = await api.post('/api/orders/sync-recent', { limit });
+    return data;
+}
+
 export async function fetchShipments(
     page = 1,
     limit = 10

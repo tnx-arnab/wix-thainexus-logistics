@@ -3,9 +3,6 @@ import { getConfigPublic, getStoreToken, isDebugEnabled } from '@thai-nexus/shar
 import { instanceIdFromDashboardQuery } from '../wix/instanceParam.js';
 import { encodePayload, getSession, isAppContextJwt } from '../auth.js';
 
-const UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const router = Router();
 
 /**
@@ -25,13 +22,12 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const instanceId =
+        const instanceParam =
             (typeof req.query.instanceId === 'string' && req.query.instanceId) ||
             (typeof req.query.instance_id === 'string' && req.query.instance_id) ||
-            (typeof req.query.instance === 'string'
-                ? instanceIdFromDashboardQuery(req.query.instance)
-                : null) ||
+            (typeof req.query.instance === 'string' ? req.query.instance : '') ||
             '';
+        const instanceId = instanceParam ? instanceIdFromDashboardQuery(instanceParam) : '';
 
         if (!instanceId) {
             return res.status(401).json({
@@ -89,8 +85,7 @@ router.get('/context', async (req, res) => {
         return res.json({ context: raw });
     }
 
-    const instanceId =
-        instanceIdFromDashboardQuery(raw) || (UUID_RE.test(raw.trim()) ? raw.trim() : '');
+    const instanceId = instanceIdFromDashboardQuery(raw);
     if (!instanceId) {
         return res.status(400).json({ message: 'Could not resolve instance id from context' });
     }

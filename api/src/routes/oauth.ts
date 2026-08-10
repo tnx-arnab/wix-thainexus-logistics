@@ -9,6 +9,8 @@ import {
 } from '../auth.js';
 import { exchangeWixToken, parseWixInstanceParam } from '../wix/oauth.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
+import { instanceIdFromWixClaims } from '../wix/verify.js';
+import { verifiedWebhookClaims } from '../wix/webhookAuth.js';
 
 const router = Router();
 
@@ -187,8 +189,14 @@ router.get('/load', async (req, res) => {
 
 router.post('/uninstall', async (req, res) => {
     try {
+        const claims = verifiedWebhookClaims(req.headers.authorization);
+        if (claims === null) {
+            return res.status(401).json({ ok: false, reason: 'invalid-jwt' });
+        }
+
         const body = req.body || {};
         const instanceId =
+            instanceIdFromWixClaims(claims || {}) ||
             body.instanceId ||
             body.instance_id ||
             body.data?.instanceId;

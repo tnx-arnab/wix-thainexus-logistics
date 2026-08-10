@@ -1,44 +1,19 @@
-const TTL_MS = 60 * 60 * 1000;
-const cache = new Map<string, { quotes: unknown; expiresAt: number }>();
-
-function cacheKey(instanceId: string, payload: Record<string, unknown>): string {
-    return `${instanceId}:${JSON.stringify(payload)}`;
-}
-
+/** Quote caching disabled — checkout always hits Thai Nexus live. */
 export function getCachedQuotes(
-    instanceId: string,
-    payload: Record<string, unknown>
+    _instanceId: string,
+    _payload: Record<string, unknown>
 ): unknown[] | null {
-    const key = cacheKey(instanceId, payload);
-    const entry = cache.get(key);
-    if (!entry || entry.expiresAt < Date.now()) {
-        if (entry) cache.delete(key);
-
-        return null;
-    }
-
-    return entry.quotes as unknown[];
+    return null;
 }
 
 export function setCachedQuotes(
-    instanceId: string,
-    payload: Record<string, unknown>,
-    quotes: unknown[]
+    _instanceId: string,
+    _payload: Record<string, unknown>,
+    _quotes: unknown[]
 ): void {
-    cache.set(cacheKey(instanceId, payload), {
-        quotes,
-        expiresAt: Date.now() + TTL_MS,
-    });
+    // no-op
 }
 
-export function clearQuoteCache(instanceId?: string): number {
-    let removed = 0;
-    for (const key of [...cache.keys()]) {
-        if (!instanceId || key.startsWith(`${instanceId}:`)) {
-            cache.delete(key);
-            removed++;
-        }
-    }
-
-    return removed;
+export function clearQuoteCache(_instanceId?: string): number {
+    return 0;
 }

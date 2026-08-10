@@ -64,9 +64,11 @@ export default function ProductsPage() {
             setPhysical(data);
             setMessage(
                 data.readyForRates
-                    ? data.warning
-                        ? `Saved (ready for rates). ${data.warning}`
-                        : 'Saved. Product is ready for checkout rates (weight + L/W/H).'
+                    ? !data.ratesPersisted && data.warning
+                        ? `Saved in Wix, but checkout may miss rates until Supabase sync. ${data.warning}`
+                        : data.warning
+                          ? `Saved (ready for rates). ${data.warning}`
+                          : 'Saved. Product is ready for checkout rates (weight + L/W/H).'
                     : data.warning || data.note || 'Saved, but some fields are still missing for rates.'
             );
             if (data.overrideError && !data.readyForRates) {

@@ -20,10 +20,14 @@ export async function resolveAppContext(): Promise<string | null> {
     if (isAppJwt(context)) return context;
 
     if (isWixInstanceId(context) || context.split('.').length === 3 || context.length > 8) {
-        const { data } = await api.get<{ context: string }>('/api/session/context', {
-            params: { context },
-        });
-        return data.context;
+        try {
+            const { data } = await api.get<{ context: string }>('/api/session/context', {
+                params: { context },
+            });
+            return data.context;
+        } catch {
+            return null;
+        }
     }
 
     return context;
