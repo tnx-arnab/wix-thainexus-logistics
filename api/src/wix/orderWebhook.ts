@@ -72,9 +72,12 @@ export function normalizeOrderWebhookBody(body: Record<string, unknown>): {
     }
 
     const slug = webhookSlug(body);
+    const hasCreatedEntity = Boolean(
+        (body.createdEvent as { entity?: unknown } | undefined)?.entity
+    );
     const isPaymentStatusEvent =
         slug.includes('payment_status') || slug.includes('payment-status');
-    const isCreatedEvent = isOrderCreatedWebhook(slug);
+    const isCreatedEvent = isOrderCreatedWebhook(slug) || hasCreatedEntity;
 
     const status = paymentStatusFromPayload(payload);
 

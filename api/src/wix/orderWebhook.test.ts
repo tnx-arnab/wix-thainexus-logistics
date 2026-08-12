@@ -51,3 +51,34 @@ test('order created skips canceled payment', () => {
     });
     assert.equal(result.skipReason, 'blocked-canceled');
 });
+
+test('order created recognized from JWT eventType envelope only', () => {
+    const result = normalizeOrderWebhookBody({
+        eventType: 'wix.ecom.v1.order_created',
+        createdEvent: {
+            entity: {
+                id: 'order-guid-2',
+                paymentStatus: 'NOT_PAID',
+                lineItems: [],
+            },
+        },
+    });
+
+    assert.equal(result.skipReason, undefined);
+    const order = result.payload.order as Record<string, unknown>;
+    assert.equal(order.id, 'order-guid-2');
+});
+
+test('order created skips fully refunded', () => {
+    const result = normalizeOrderWebhookBody({
+        eventType: 'wix.ecom.v1.order_created',
+        createdEvent: {
+            entity: {
+                id: 'o3',
+                paymentStatus: 'FULLY_REFUNDED',
+                lineItems: [],
+            },
+        },
+    });
+    assert.equal(result.skipReason, 'blocked-fully_refunded');
+});

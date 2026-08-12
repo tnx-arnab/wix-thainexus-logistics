@@ -71,7 +71,11 @@ router.post('/orders', async (req: WixWebhookRequest, res) => {
             return;
         }
 
-        const { payload, skipReason } = normalizeOrderWebhookBody(body);
+        const bodyForNormalize =
+            req.wixWebhook?.eventType && !body.eventType
+                ? { ...body, eventType: req.wixWebhook.eventType }
+                : body;
+        const { payload, skipReason } = normalizeOrderWebhookBody(bodyForNormalize);
         if (skipReason) {
             ackOrderWebhook(res, body, { ok: false, reason: skipReason });
             deferWebhookWork(

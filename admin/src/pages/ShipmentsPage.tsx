@@ -49,6 +49,7 @@ export default function ShipmentsPage() {
     const [detailsLoading, setDetailsLoading] = useState(false);
 
     const [syncing, setSyncing] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     const runSyncFromWix = async () => {
         setSyncing(true);
@@ -65,6 +66,7 @@ export default function ShipmentsPage() {
                     : `No new shipments.\n${lines || res.hint || 'Check webhook setup for future orders.'}`
             );
             setPage(1);
+            setReloadKey((k) => k + 1);
         } catch (err) {
             alert(err instanceof Error ? err.message : 'Sync failed');
         } finally {
@@ -111,7 +113,7 @@ export default function ShipmentsPage() {
                 setTotal(0);
             })
             .finally(() => setLoading(false));
-    }, [page]);
+    }, [page, reloadKey]);
 
     const openDetail = async (requestNumber: string) => {
         setDetailsLoading(true);

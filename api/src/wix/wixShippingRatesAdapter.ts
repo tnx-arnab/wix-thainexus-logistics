@@ -428,7 +428,7 @@ export async function calculateWixShippingRates(
         sleep(fastMs).then(() => ({ kind: 'timeout' as const })),
     ]);
 
-    if (raced.kind === 'live' && raced.shippingRates.length) {
+    if (raced.kind === 'live') {
         return { shippingRates: raced.shippingRates, hint: raced.hint };
     }
 

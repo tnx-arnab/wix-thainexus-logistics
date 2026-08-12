@@ -1,8 +1,12 @@
 import { Router } from 'express';
-import { getOrderShipments, listInstallLogs } from '@thai-nexus/shared';
+import {
+    getOrderShipments,
+    isOrderShipmentRecordComplete,
+    listInstallLogs,
+} from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
-import { orderToWebhookPayload, searchRecentOrders } from '../wix/ordersApi.js';
-import { processOrderWebhook } from '../wix/orderWebhook.js';
+import { searchRecentOrders } from '../wix/ordersApi.js';
+import { normalizeOrderWebhookBody, processOrderWebhook } from '../wix/orderWebhook.js';
 import { getValidAccessToken } from '../wix/tokens.js';
 
 const router = Router();
@@ -65,23 +69,26 @@ router.post('/sync-recent', async (req, res) => {
             const paymentStatus = String(
                 order.paymentStatus || order.payment_status || ''
             ).toUpperCase();
-            if (
-                paymentStatus &&
-                (paymentStatus === 'CANCELED' || paymentStatus === 'DECLINED')
-            ) {
+
+            const webhookBody = {
+                eventType: 'wix.ecom.v1.order_created',
+                createdEvent: { entity: order },
+            };
+            const { payload, skipReason } = normalizeOrderWebhookBody(webhookBody);
+            if (skipReason) {
                 results.push({
                     orderId,
                     number: String(order.number || order.orderNumber || ''),
-                    paymentStatus,
+                    paymentStatus: paymentStatus || undefined,
                     ok: false,
-                    reason: `blocked-${paymentStatus.toLowerCase()}`,
+                    reason: skipReason,
                     skipped: true,
                 });
                 continue;
             }
 
             const existing = await getOrderShipments(session.instanceId, orderId);
-            if (existing) {
+            if (existing && isOrderShipmentRecordComplete(existing)) {
                 results.push({
                     orderId,
                     number: String(order.number || order.orderNumber || ''),
@@ -93,7 +100,6 @@ router.post('/sync-recent', async (req, res) => {
                 continue;
             }
 
-            const payload = orderToWebhookPayload(order);
             const outcome = await processOrderWebhook(session.instanceId, payload);
             results.push({
                 orderId,
