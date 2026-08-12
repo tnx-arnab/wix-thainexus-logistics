@@ -7,7 +7,7 @@ const router = Router();
 
 /**
  * Bootstrap Dashboard session.
- * Accepts ?instanceId= or ?context= (app JWT) and returns public config + context JWT.
+ * Accepts a Wix-signed instance JWT or app context JWT and returns public config + context JWT.
  */
 router.get('/', async (req, res) => {
     try {
@@ -69,7 +69,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-/** Exchange raw instance id for app JWT when store is already installed. */
+/** Exchange a Wix-signed instance JWT for an app JWT when the store is already installed. */
 router.get('/context', async (req, res) => {
     const raw =
         (typeof req.query.context === 'string' && req.query.context) ||

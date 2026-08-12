@@ -4,7 +4,7 @@ import { removeDataStore } from '../auth.js';
 import type { WixWebhookRequest } from '../bodyMiddleware.js';
 import { deferWebhookWork } from '../workerContext.js';
 import { normalizeOrderWebhookBody, processOrderWebhook } from '../wix/orderWebhook.js';
-import { instanceIdFromWixClaims } from '../wix/verify.js';
+import { instanceIdFromWixClaims, webhookVerifySkipped } from '../wix/verify.js';
 import { verifiedWebhookClaims } from '../wix/webhookAuth.js';
 
 const router = Router();
@@ -16,9 +16,11 @@ function instanceFromRequest(req: WixWebhookRequest, body: Record<string, unknow
     const fromClaims = claims ? instanceIdFromWixClaims(claims) : undefined;
     if (fromClaims) return fromClaims;
 
-    if (body.instanceId) return String(body.instanceId);
-    const meta = (body.metadata || body.data || body) as Record<string, unknown>;
-    if (meta.instanceId) return String(meta.instanceId);
+    if (webhookVerifySkipped()) {
+        if (body.instanceId) return String(body.instanceId);
+        const meta = (body.metadata || body.data || body) as Record<string, unknown>;
+        if (meta.instanceId) return String(meta.instanceId);
+    }
     return null;
 }
 

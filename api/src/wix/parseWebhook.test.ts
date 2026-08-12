@@ -13,6 +13,7 @@ test('parseWixWebhookRequest unwraps REST JWT envelope', () => {
     });
 
     process.env.WIX_PUBLIC_KEY = publicKey;
+    process.env.WIX_APP_ID = 'app-id-test';
     process.env.WEBHOOK_SKIP_VERIFY = '';
 
     const eventBody = {
@@ -38,6 +39,7 @@ test('parseWixWebhookRequest unwraps REST JWT envelope', () => {
     const token = jwt.sign({ data: JSON.stringify(envelope) }, privateKey, {
         algorithm: 'RS256',
         issuer: 'wix.com',
+        audience: 'app-id-test',
     });
 
     const pem = normalizeWixPublicKeyPem(publicKey);
@@ -76,6 +78,26 @@ test('parseWixWebhookRequest accepts plain JSON in dev', () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.parsed.instanceId, 'inst-1');
+});
+
+test('parseWixWebhookRequest rejects JWT without iss', () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    process.env.WIX_PUBLIC_KEY = publicKey;
+    process.env.WIX_APP_ID = 'app-id-test';
+    process.env.WEBHOOK_SKIP_VERIFY = '';
+
+    const token = jwt.sign({ data: JSON.stringify({ instanceId: 'x', eventType: 't' }) }, privateKey, {
+        algorithm: 'RS256',
+        audience: 'app-id-test',
+    });
+
+    const result = parseWixWebhookRequest(token);
+    assert.equal(result.ok, false);
 });
 
 test('parseWixWebhookRequest rejects plain JSON when verify is enabled', () => {

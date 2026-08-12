@@ -1,3 +1,4 @@
+import { decryptStoredSecret, encryptSecret } from '../crypto.js';
 import { resolveInstanceId } from '../session.js';
 import { SessionProps } from '../types/index.js';
 import { getSupabase } from './client.js';
@@ -26,8 +27,8 @@ export async function setStore(session: SessionProps, options?: { requireToken?:
     const instanceId = resolveInstanceId(session);
     const { error } = await getSupabase().from('stores').upsert({
         instance_id: instanceId,
-        access_token: accessToken,
-        refresh_token: refreshToken || null,
+        access_token: encryptSecret(accessToken),
+        refresh_token: refreshToken ? encryptSecret(refreshToken) : null,
         scope: scope || '',
         site_id: session.site_id || null,
         meta_site_id: session.meta_site_id || null,
@@ -69,15 +70,8 @@ export async function hasStoreUser(instanceId: string, userId: string) {
 }
 
 export async function getStoreToken(instanceId: string) {
-    const { data, error } = await getSupabase()
-        .from('stores')
-        .select('access_token')
-        .eq('instance_id', instanceId)
-        .maybeSingle();
-
-    if (error) throw error;
-
-    return data?.access_token as string | undefined;
+    const row = await getStore(instanceId);
+    return row?.access_token;
 }
 
 export async function getStore(instanceId: string): Promise<StoreRow | null> {
@@ -88,8 +82,14 @@ export async function getStore(instanceId: string): Promise<StoreRow | null> {
         .maybeSingle();
 
     if (error) throw error;
+    if (!data) return null;
 
-    return (data as StoreRow | null) || null;
+    const row = data as StoreRow;
+    return {
+        ...row,
+        access_token: decryptStoredSecret(row.access_token),
+        refresh_token: row.refresh_token ? decryptStoredSecret(row.refresh_token) : row.refresh_token,
+    };
 }
 
 export async function updateStoreTokens(
@@ -99,8 +99,8 @@ export async function updateStoreTokens(
     const { error } = await getSupabase()
         .from('stores')
         .update({
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token ?? null,
+            access_token: encryptSecret(tokens.access_token),
+            refresh_token: tokens.refresh_token ? encryptSecret(tokens.refresh_token) : null,
             scope: tokens.scope,
             updated_at: new Date().toISOString(),
         })

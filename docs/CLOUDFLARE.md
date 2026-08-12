@@ -99,4 +99,4 @@ curl -s https://wix.thainexus.co.th/health
 curl -s https://wix.thainexus.co.th/api/setup
 ```
 
-`wix_app_id_prefix` must match your Wix App ID.
+`checks.wix_app_id` and `checks.ready` should be true. The response is booleans only.

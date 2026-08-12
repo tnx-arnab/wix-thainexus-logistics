@@ -36,7 +36,7 @@ Replace after each new `cloudflared tunnel --url http://localhost:3001`:
 1. Wix Dev Center → **Test App** → open on a development site
 2. Complete install; you should land on the admin with Settings
 3. Supabase **stores** table → one row (`instance_id`)
-4. `GET .../api/setup` → `instances_linked: 1`
+4. `GET .../api/setup` → `checks.ready` / `checks.supabase_ok` true
 
 ## Merchant setup
 

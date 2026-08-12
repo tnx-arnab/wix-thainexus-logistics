@@ -16,32 +16,22 @@ import { normalizeWixPublicKeyPem } from '../wix/verify.js';
 
 const router = Router();
 
-/** Public install diagnostics (no secrets exposed). */
+/** Public install diagnostics (booleans only; no secrets, URLs, or counts). */
 router.get('/', async (_req, res) => {
-    const expectedAuth = 'https://wix.thainexus.co.th/api/oauth/v1/signup';
-    const authCallback = process.env.AUTH_CALLBACK?.trim() || '';
-    const appUrl = process.env.APP_URL?.trim() || '';
-
-    let storeCount = 0;
     let supabaseOk = false;
-    let supabaseMessage: string | undefined;
     let physicalOverrideColumn = false;
 
     try {
-        const { count, error } = await getSupabase()
+        const { error } = await getSupabase()
             .from('stores')
-            .select('*', { count: 'exact', head: true });
+            .select('instance_id', { count: 'exact', head: true });
         supabaseOk = !error;
-        supabaseMessage = error?.message;
-        storeCount = count ?? 0;
         if (supabaseOk) {
             physicalOverrideColumn = await supabaseHasPhysicalOverrideColumn();
         }
-    } catch (err) {
-        supabaseMessage = err instanceof Error ? err.message : 'Supabase error';
+    } catch {
+        supabaseOk = false;
     }
-
-    const appId = process.env.WIX_APP_ID?.trim() || '';
 
     const publicKeyRaw = process.env.WIX_PUBLIC_KEY?.trim() || '';
     const publicKeyPem = normalizeWixPublicKeyPem(publicKeyRaw);
@@ -50,13 +40,12 @@ router.get('/', async (_req, res) => {
 
     res.json({
         ready:
-            Boolean(appId) &&
+            Boolean(process.env.WIX_APP_ID?.trim()) &&
             Boolean(process.env.WIX_APP_SECRET) &&
             Boolean(process.env.JWT_KEY) &&
             Boolean(process.env.ENCRYPTION_KEY) &&
             Boolean(process.env.WIX_PUBLIC_KEY) &&
             supabaseOk,
-        wix_app_id_prefix: appId ? appId.slice(0, 10) : null,
         checks: {
             wix_app_id: Boolean(process.env.WIX_APP_ID),
             wix_app_secret: Boolean(process.env.WIX_APP_SECRET),
@@ -64,9 +53,8 @@ router.get('/', async (_req, res) => {
             wix_public_key_pem_ok: publicKeyLooksValid,
             jwt_key: Boolean(process.env.JWT_KEY),
             encryption_key: Boolean(process.env.ENCRYPTION_KEY),
-            app_url: appUrl || null,
-            auth_callback: authCallback || null,
-            auth_callback_matches_prod: !authCallback || authCallback === expectedAuth,
+            app_url: Boolean(process.env.APP_URL?.trim()),
+            auth_callback: Boolean(process.env.AUTH_CALLBACK?.trim()),
             supabase_url: Boolean(process.env.SUPABASE_URL),
             supabase_secret_key: Boolean(
                 process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -74,15 +62,6 @@ router.get('/', async (_req, res) => {
             supabase_ok: supabaseOk,
             product_flags_physical_override: physicalOverrideColumn,
         },
-        instances_linked: storeCount,
-        next_step:
-            storeCount === 0
-                ? 'Install the app from Wix App Market / Dashboard. Confirm a row appears in Supabase stores.'
-                : 'Open Apps → Thai Nexus from the Wix Dashboard.',
-        supabase_error: supabaseMessage,
-        physical_override_migration: physicalOverrideColumn ? null : PHYSICAL_OVERRIDE_MIGRATION_SQL,
-        spi_jwt_hint:
-            'If spi-traces show jwt: invalid signature, paste Dev Center Public Key into .dev.vars WIX_PUBLIC_KEY (use \\n for newlines) and run npm run cf:secrets',
     });
 });
 
@@ -184,9 +163,7 @@ router.get('/logs', async (req, res) => {
     }
     try {
         const logs = await listInstallLogs(40);
-        const forStore = logs.filter(
-            (l) => !l.instance_id || l.instance_id === session.instanceId
-        );
+        const forStore = logs.filter((l) => l.instance_id === session.instanceId);
         const authHits = forStore.filter((l) => l.route === '/api/auth');
         const lastAuth = authHits[0];
 

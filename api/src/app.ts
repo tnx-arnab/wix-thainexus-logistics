@@ -20,11 +20,47 @@ export type CreateAppOptions = {
     serveStatic?: boolean;
 };
 
+function isAllowedCorsOrigin(origin: string): boolean {
+    let url: URL;
+    try {
+        url = new URL(origin);
+    } catch {
+        return false;
+    }
+
+    const host = url.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host === 'wix.com' || host.endsWith('.wix.com')) return true;
+    if (host === 'wixstudio.com' || host.endsWith('.wixstudio.com')) return true;
+
+    for (const raw of [process.env.APP_URL, process.env.ADMIN_DEV_URL]) {
+        const value = raw?.trim();
+        if (!value) continue;
+        try {
+            if (new URL(value).origin === origin) return true;
+        } catch {
+            // ignore invalid env URLs
+        }
+    }
+
+    return false;
+}
+
 export function createApp(options: CreateAppOptions = {}): Express {
     const { serveStatic = false } = options;
     const app = express();
 
-    app.use(cors({ origin: true, credentials: true }));
+    app.use(
+        cors({
+            origin(origin, callback) {
+                if (!origin || isAllowedCorsOrigin(origin)) {
+                    return callback(null, true);
+                }
+                return callback(null, false);
+            },
+            credentials: true,
+        })
+    );
     app.use('/api/webhooks', wixWebhookBodyMiddleware(), webhooksRouter);
     app.use(shippingRatesRouter);
     app.use(jsonBodyMiddleware());
@@ -47,7 +83,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
             ok: true,
             platform: 'wix',
             runtime: serveStatic ? 'node' : 'cloudflare-workers',
-            supabase,
+            supabase: { ok: supabase.ok },
         });
     });
 

@@ -53,7 +53,7 @@ export function isAppContextJwt(value: string): boolean {
     const key = process.env.JWT_KEY?.trim();
     if (!key || value.split('.').length !== 3) return false;
     try {
-        jwt.verify(value, key);
+        jwt.verify(value, key, { algorithms: ['HS256'] });
         return true;
     } catch {
         return false;
@@ -72,7 +72,7 @@ export function encodePayload(session: SessionProps): string {
             siteId: session.site_id,
         },
         getJwtKey(),
-        { expiresIn: '24h' }
+        { algorithm: 'HS256', expiresIn: '24h' }
     );
 }
 
@@ -82,7 +82,7 @@ function hasUserId(user: SessionProps['user'] | undefined): boolean {
 
 /**
  * Resolve merchant session from `?context=` app JWT (Dashboard bootstrap)
- * or raw instance id when already installed.
+ * or a Wix-signed instance JWT when already installed.
  */
 export async function getSession(req: Request): Promise<SessionContext | null> {
     const context =
@@ -98,7 +98,7 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
 
     if (isAppContextJwt(context)) {
         try {
-            const decoded = jwt.verify(context, getJwtKey()) as {
+            const decoded = jwt.verify(context, getJwtKey(), { algorithms: ['HS256'] }) as {
                 context?: string;
                 instanceId?: string;
                 user: SessionProps['user'];
@@ -183,9 +183,22 @@ export async function removeStoreUser(
     await deleteStoreUser(session);
 }
 
-export function oauthHtmlPage(title: string, body: string): string {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+export function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+export function oauthHtmlPage(title: string, bodyHtml: string): string {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:32rem;margin:auto;color:#272262}
 .err{color:#bf1d2d;background:#fef2f2;padding:1rem;border-radius:8px}</style></head>
-<body>${body}</body></html>`;
+<body>${bodyHtml}</body></html>`;
+}
+
+export function oauthErrorPage(title: string, message: string): string {
+    return oauthHtmlPage(title, `<div class="err">${escapeHtml(message)}</div>`);
 }

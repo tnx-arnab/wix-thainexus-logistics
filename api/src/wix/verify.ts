@@ -32,14 +32,14 @@ export function normalizeWixPublicKeyPem(raw: string | undefined): string {
 }
 
 function audienceMatches(aud: unknown, appId: string): boolean {
-    if (aud == null) return true;
+    if (aud == null) return false;
     if (Array.isArray(aud)) return aud.map(String).includes(appId);
     return String(aud) === appId;
 }
 
 function assertWixJwtClaims(claims: WixVerifiedClaims): void {
-    if (claims.iss && claims.iss !== 'wix.com') {
-        throw new Error(`Invalid JWT iss: ${claims.iss}`);
+    if (claims.iss !== 'wix.com') {
+        throw new Error(`Invalid JWT iss: ${claims.iss ?? '(missing)'}`);
     }
     const appId = process.env.WIX_APP_ID?.trim();
     if (appId && !audienceMatches(claims.aud, appId)) {

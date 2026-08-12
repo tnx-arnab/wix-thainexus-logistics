@@ -23,9 +23,7 @@ router.get('/spi-traces', async (req, res) => {
             listRateTraces(40),
         ]);
 
-        const globalForStore = globalTraces.filter(
-            (t) => !t.store_id || t.store_id === session.instanceId
-        );
+        const globalForStore = globalTraces.filter((t) => t.store_id === session.instanceId);
 
         return res.json({
             instanceId: session.instanceId,

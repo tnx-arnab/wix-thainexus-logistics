@@ -2,14 +2,17 @@ import { Router, type Request, type Response } from 'express';
 import { logInstallEvent } from '@thai-nexus/shared';
 import {
     encodePayload,
+    escapeHtml,
     getAppBaseUrl,
+    oauthErrorPage,
     oauthHtmlPage,
     persistOAuthSession,
     removeDataStore,
 } from '../auth.js';
-import { exchangeWixToken, parseWixInstanceParam } from '../wix/oauth.js';
+import { exchangeWixToken } from '../wix/oauth.js';
+import { instanceIdFromDashboardQuery } from '../wix/instanceParam.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
-import { instanceIdFromWixClaims } from '../wix/verify.js';
+import { instanceIdFromWixClaims, webhookVerifySkipped } from '../wix/verify.js';
 import { verifiedWebhookClaims } from '../wix/webhookAuth.js';
 
 const router = Router();
@@ -60,21 +63,24 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
         });
 
         if (!exchangeCode) {
+            const redirectHint = escapeHtml(oauthRedirectUrl());
             return res.status(400).send(
                 oauthHtmlPage(
                     'Missing authorization code',
-                    `<div class="err">Expected <code>code</code> from Wix after permissions. Confirm Redirect URL is <code>${oauthRedirectUrl()}</code> and matches the Dev Center exactly.</div>`
+                    `<div class="err">Expected <code>code</code> from Wix after permissions. Confirm Redirect URL is <code>${redirectHint}</code> and matches the Dev Center exactly.</div>`
                 )
             );
         }
 
         const tokens = await exchangeWixToken(exchangeCode, oauthRedirectUrl());
-        const fromInstance = instanceParam ? parseWixInstanceParam(instanceParam) : {};
+        const fromInstance = instanceParam
+            ? instanceIdFromDashboardQuery(instanceParam)
+            : null;
         const instanceId =
             tokens.instanceId ||
-            fromInstance.instanceId ||
+            fromInstance ||
             instanceIdFromAccessToken(tokens.access_token) ||
-            (typeof req.query.instanceId === 'string' ? req.query.instanceId : '');
+            '';
 
         if (!instanceId) {
             throw new Error(
@@ -87,8 +93,8 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             refresh_token: tokens.refresh_token,
             scope: 'wix',
             instance_id: instanceId,
-            site_id: tokens.siteId || fromInstance.siteId,
-            meta_site_id: tokens.metaSiteId || fromInstance.metaSiteId,
+            site_id: tokens.siteId,
+            meta_site_id: tokens.metaSiteId,
             user: { id: 'owner', email: 'merchant@wix.com' },
         });
 
@@ -106,7 +112,7 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             owner: { id: 'owner', email: 'merchant@wix.com' },
             access_token: tokens.access_token,
             scope: 'wix',
-            site_id: tokens.siteId || fromInstance.siteId,
+            site_id: tokens.siteId,
         });
 
         const base = getAppBaseUrl();
@@ -127,9 +133,7 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             message,
             has_code: Boolean(exchangeCode),
         });
-        return res.status(500).send(
-            oauthHtmlPage('Install failed', `<div class="err">${message}</div>`)
-        );
+        return res.status(500).send(oauthErrorPage('Install failed', message));
     }
 }
 
@@ -157,7 +161,7 @@ router.get('/oauth/v1/authorize', async (req, res) => {
         return res.redirect(wixInstallerInstallUrl(token, state));
     } catch (err) {
         const message = err instanceof Error ? err.message : 'authorize failed';
-        return res.status(500).send(oauthHtmlPage('Authorize failed', `<div class="err">${message}</div>`));
+        return res.status(500).send(oauthErrorPage('Authorize failed', message));
     }
 });
 
@@ -197,9 +201,9 @@ router.post('/uninstall', async (req, res) => {
         const body = req.body || {};
         const instanceId =
             instanceIdFromWixClaims(claims || {}) ||
-            body.instanceId ||
-            body.instance_id ||
-            body.data?.instanceId;
+            (webhookVerifySkipped()
+                ? body.instanceId || body.instance_id || body.data?.instanceId
+                : undefined);
         if (instanceId) {
             await removeDataStore({
                 instance_id: String(instanceId),

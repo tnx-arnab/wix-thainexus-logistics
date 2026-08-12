@@ -4,17 +4,31 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
-function getKey(): Buffer {
-    const secret = process.env.ENCRYPTION_KEY || process.env.JWT_KEY || '';
+function requireEncryptionKey(): string {
+    const secret = process.env.ENCRYPTION_KEY?.trim() || '';
     if (secret.length < 16) {
         throw new Error('ENCRYPTION_KEY must be at least 16 characters');
     }
+    return secret;
+}
 
+function keyFromSecret(secret: string): Buffer {
     return scryptSync(secret, 'thai-nexus', 32);
 }
 
+function decryptWithKey(ciphertext: string, key: Buffer): string {
+    const data = Buffer.from(ciphertext, 'base64');
+    const iv = data.subarray(0, IV_LENGTH);
+    const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+    const encrypted = data.subarray(IV_LENGTH + TAG_LENGTH);
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(tag);
+
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+
 export function encryptSecret(plaintext: string): string {
-    const key = getKey();
+    const key = keyFromSecret(requireEncryptionKey());
     const iv = randomBytes(IV_LENGTH);
     const cipher = createCipheriv(ALGORITHM, key, iv);
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
@@ -24,13 +38,28 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(ciphertext: string): string {
-    const key = getKey();
-    const data = Buffer.from(ciphertext, 'base64');
-    const iv = data.subarray(0, IV_LENGTH);
-    const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
-    const encrypted = data.subarray(IV_LENGTH + TAG_LENGTH);
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(tag);
+    const primary = requireEncryptionKey();
+    try {
+        return decryptWithKey(ciphertext, keyFromSecret(primary));
+    } catch (primaryErr) {
+        const legacy = process.env.JWT_KEY?.trim() || '';
+        if (legacy.length >= 16 && legacy !== primary) {
+            try {
+                return decryptWithKey(ciphertext, keyFromSecret(legacy));
+            } catch {
+                // fall through
+            }
+        }
+        throw primaryErr;
+    }
+}
 
-    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+/** Decrypt at-rest secrets; plaintext legacy values are returned as-is. */
+export function decryptStoredSecret(value: string): string {
+    if (!value) return value;
+    try {
+        return decryptSecret(value);
+    } catch {
+        return value;
+    }
 }
