@@ -16,8 +16,9 @@ WIX_PUBLIC_KEY=
 JWT_KEY=
 ENCRYPTION_KEY=
 
-# Local only: trust plain ?instanceId= UUID (production uses Wix-signed instance JWT).
+# Local only: never set these in production; cf:secrets skips them.
 # ALLOW_PLAIN_INSTANCE_ID=true
+# WEBHOOK_SKIP_VERIFY=true
 
 THAI_NEXUS_FUNCTIONS_URL=https://app.thainexus.co.th/functions/
 THAI_NEXUS_TIMEOUT_MS=7000

@@ -19,7 +19,7 @@ CLOUDFLARE_API_TOKEN=your_token_here
 CLOUDFLARE_ACCOUNT_ID=60982be87817726f0bbc988e9122e2b7
 ```
 
-`npm run cf:secrets` **skips** `CLOUDFLARE_*` and `SUPABASE_*` lines on purpose.
+`npm run cf:secrets` **skips** `CLOUDFLARE_*`, `SUPABASE_*`, `WEBHOOK_SKIP_VERIFY`, and `ALLOW_PLAIN_INSTANCE_ID`.
 
 Verify:
 

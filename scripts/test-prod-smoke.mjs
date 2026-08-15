@@ -11,17 +11,16 @@ if (!healthRes.ok || health.ok !== true || health.d1?.ok !== true) {
 
 const setupRes = await fetch('https://wix.thainexus.co.th/api/setup');
 const setup = await setupRes.json();
-if (!setupRes.ok || setup.checks?.d1_ok !== true) {
+if (!setupRes.ok || setup.ready !== true) {
     console.error('production /api/setup failed', setup);
     process.exit(1);
 }
-if ('supabase_url' in (setup.checks || {}) || 'supabase_secret_key' in (setup.checks || {})) {
-    console.error('production setup still exposes supabase checks', setup.checks);
+if ('checks' in setup) {
+    console.error('production setup still exposes secret inventory', setup);
     process.exit(1);
 }
 
 console.log('production smoke ok', {
     health: health.d1,
     ready: setup.ready,
-    d1_ok: setup.checks.d1_ok,
 });

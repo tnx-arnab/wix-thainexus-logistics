@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 
 export function webhookVerifySkipped(): boolean {
+    if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
     const v = process.env.WEBHOOK_SKIP_VERIFY?.trim().toLowerCase();
     return v === 'true' || v === '1';
 }

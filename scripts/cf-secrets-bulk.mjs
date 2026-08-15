@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Upload .dev.vars to Cloudflare Worker secrets (supports multiline PEM values).
- * Skips CLOUDFLARE_* and SUPABASE_* keys and comments.
+ * Skips CLOUDFLARE_*, SUPABASE_*, WEBHOOK_SKIP_VERIFY, and ALLOW_PLAIN_INSTANCE_ID.
  */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -44,6 +44,10 @@ for (const line of fs.readFileSync(devVarsPath, 'utf8').split('\n')) {
         flush();
         currentKey = match[1];
         if (match[1].startsWith('CLOUDFLARE_') || match[1].startsWith('SUPABASE_')) {
+            currentKey = null;
+            continue;
+        }
+        if (match[1] === 'WEBHOOK_SKIP_VERIFY' || match[1] === 'ALLOW_PLAIN_INSTANCE_ID') {
             currentKey = null;
             continue;
         }

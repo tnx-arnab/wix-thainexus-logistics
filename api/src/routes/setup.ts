@@ -15,7 +15,7 @@ import { normalizeWixPublicKeyPem } from '../wix/verify.js';
 
 const router = Router();
 
-/** Public install diagnostics (booleans only; no secrets, URLs, or counts). */
+/** Public install diagnostics (ready flag only; no secret inventory). */
 router.get('/', async (_req, res) => {
     let d1Ok = false;
 
@@ -33,26 +33,16 @@ router.get('/', async (_req, res) => {
     const publicKeyLooksValid =
         publicKeyPem.includes('BEGIN PUBLIC KEY') || publicKeyPem.includes('BEGIN RSA PUBLIC KEY');
 
-    res.json({
-        ready:
-            Boolean(process.env.WIX_APP_ID?.trim()) &&
-            Boolean(process.env.WIX_APP_SECRET) &&
-            Boolean(process.env.JWT_KEY) &&
-            Boolean(process.env.ENCRYPTION_KEY) &&
-            Boolean(process.env.WIX_PUBLIC_KEY) &&
-            d1Ok,
-        checks: {
-            wix_app_id: Boolean(process.env.WIX_APP_ID),
-            wix_app_secret: Boolean(process.env.WIX_APP_SECRET),
-            wix_public_key: Boolean(process.env.WIX_PUBLIC_KEY),
-            wix_public_key_pem_ok: publicKeyLooksValid,
-            jwt_key: Boolean(process.env.JWT_KEY),
-            encryption_key: Boolean(process.env.ENCRYPTION_KEY),
-            app_url: Boolean(process.env.APP_URL?.trim()),
-            auth_callback: Boolean(process.env.AUTH_CALLBACK?.trim()),
-            d1_ok: d1Ok,
-        },
-    });
+    const ready =
+        Boolean(process.env.WIX_APP_ID?.trim()) &&
+        Boolean(process.env.WIX_APP_SECRET) &&
+        Boolean(process.env.JWT_KEY) &&
+        Boolean(process.env.ENCRYPTION_KEY) &&
+        Boolean(process.env.WIX_PUBLIC_KEY) &&
+        publicKeyLooksValid &&
+        d1Ok;
+
+    res.json({ ready });
 });
 
 /** Session-gated checklist for checkout shipping rates. */
@@ -71,8 +61,8 @@ router.get('/rates-ready', async (req, res) => {
 
     let recentSpiHits = 0;
     try {
-        const traces = await listRateTraces(20);
-        recentSpiHits = traces.filter((t) => t.store_id === session.instanceId).length;
+        const traces = await listRateTraces(20, session.instanceId);
+        recentSpiHits = traces.length;
     } catch {
         warnings.push('Could not read SPI traces (debug_logs table).');
     }
@@ -107,20 +97,17 @@ router.get('/spi-traces', async (req, res) => {
         return res.status(401).json({ message: 'Unauthorized' });
     }
     try {
-        const traces = await listRateTraces(50);
-        const forStore = traces.filter((t) => t.store_id === session.instanceId);
+        const traces = await listRateTraces(50, session.instanceId);
         res.json({
             hint: 'Refresh checkout shipping step, then reload this URL.',
-            count: forStore.length,
+            count: traces.length,
             instanceId: session.instanceId,
-            traces: forStore.map((t) => ({
+            traces: traces.map((t) => ({
                 at: t.logged_at,
                 phase: t.phase,
                 path: t.path,
                 instance: t.store_id,
                 country: t.destination,
-                city: t.destination_city,
-                zip: t.destination_zip,
                 items: t.items,
                 quotes: t.quotes,
                 ok: t.ok,

@@ -3,6 +3,8 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import express, { Express } from 'express';
 import { jsonBodyMiddleware, wixWebhookBodyMiddleware } from './bodyMiddleware.js';
+import { applySecurityHeaders, isProduction } from './httpSecurity.js';
+import { rateLimitMiddleware } from './rateLimit.js';
 import configRouter from './routes/config.js';
 import oauthRouter from './routes/oauth.js';
 import productsRouter from './routes/products.js';
@@ -29,7 +31,9 @@ function isAllowedCorsOrigin(origin: string): boolean {
     }
 
     const host = url.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host === 'localhost' || host === '127.0.0.1') {
+        return !isProduction();
+    }
     if (host === 'wix.com' || host.endsWith('.wix.com')) return true;
     if (host === 'wixstudio.com' || host.endsWith('.wixstudio.com')) return true;
 
@@ -49,6 +53,9 @@ function isAllowedCorsOrigin(origin: string): boolean {
 export function createApp(options: CreateAppOptions = {}): Express {
     const { serveStatic = false } = options;
     const app = express();
+    app.disable('x-powered-by');
+    app.use(applySecurityHeaders);
+    app.use(rateLimitMiddleware);
 
     app.use(
         cors({
@@ -75,7 +82,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
         } catch (err) {
             d1 = {
                 ok: false,
-                message: err instanceof Error ? err.message : 'D1 not configured',
+                message: 'D1 not configured',
             };
         }
 

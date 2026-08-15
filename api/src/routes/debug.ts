@@ -18,12 +18,10 @@ router.get('/spi-traces', async (req, res) => {
     }
 
     try {
-        const [merchantEvents, globalTraces] = await Promise.all([
+        const [merchantEvents, traces] = await Promise.all([
             listMerchantSpiEvents(session.instanceId, 30),
-            listRateTraces(40),
+            listRateTraces(40, session.instanceId),
         ]);
-
-        const globalForStore = globalTraces.filter((t) => t.store_id === session.instanceId);
 
         return res.json({
             instanceId: session.instanceId,
@@ -32,7 +30,7 @@ router.get('/spi-traces', async (req, res) => {
                     ? 'No checkout SPI calls yet for this store. Wix must call POST /v1/getRates when checkout loads shipping. Open Shipping settings → Manage Your Apps → enable Thai Nexus Express, then checkout again from the cart.'
                     : undefined,
             merchantEvents,
-            globalTraces: globalForStore,
+            globalTraces: traces,
         });
     } catch (err) {
         return res.status(500).json({

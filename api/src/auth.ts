@@ -12,11 +12,9 @@ import {
     setStore,
     setStoreUser,
 } from '@thai-nexus/shared';
-import { instanceIdFromDashboardQuery } from './wix/instanceParam.js';
+import { cookieValue, BOOTSTRAP_COOKIE } from './httpSecurity.js';
+import { dashboardIdentityFromQuery } from './wix/instanceParam.js';
 import { getValidAccessToken } from './wix/tokens.js';
-
-const UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireEnv(name: string): string {
     const value = process.env[name]?.trim();
@@ -81,14 +79,20 @@ function hasUserId(user: SessionProps['user'] | undefined): boolean {
 }
 
 /**
- * Resolve merchant session from `?context=` app JWT (Dashboard bootstrap)
+ * Resolve merchant session from `X-Wix-Context` / app JWT cookie
  * or a Wix-signed instance JWT when already installed.
  */
+function contextTokenFromRequest(req: Request): string {
+    const header = req.headers['x-wix-context'];
+    if (typeof header === 'string' && header.trim()) return header.trim();
+    if (typeof req.query.context === 'string' && req.query.context.trim()) {
+        return req.query.context.trim();
+    }
+    return cookieValue(req.headers.cookie, BOOTSTRAP_COOKIE);
+}
+
 export async function getSession(req: Request): Promise<SessionContext | null> {
-    const context =
-        (typeof req.query.context === 'string' && req.query.context) ||
-        (typeof req.headers['x-wix-context'] === 'string' && req.headers['x-wix-context']) ||
-        '';
+    const context = contextTokenFromRequest(req);
 
     if (!context) return null;
 
@@ -116,12 +120,12 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
             return null;
         }
     } else {
-        const fromDashboard = instanceIdFromDashboardQuery(context);
+        const fromDashboard = dashboardIdentityFromQuery(context);
         if (!fromDashboard) {
             return null;
         }
-        instanceId = fromDashboard;
-        user = { id: 'owner', email: 'merchant@wix.com' };
+        instanceId = fromDashboard.instanceId;
+        user = { id: fromDashboard.userId, email: 'merchant@wix.com' };
         owner = user;
     }
 
@@ -193,7 +197,7 @@ export function escapeHtml(value: string): string {
 }
 
 export function oauthHtmlPage(title: string, bodyHtml: string): string {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title>
 <style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:32rem;margin:auto;color:#272262}
 .err{color:#bf1d2d;background:#fef2f2;padding:1rem;border-radius:8px}</style></head>
 <body>${bodyHtml}</body></html>`;

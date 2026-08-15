@@ -68,16 +68,23 @@ test('parseWixWebhookRequest unwraps REST JWT envelope', () => {
 });
 
 test('parseWixWebhookRequest accepts plain JSON in dev', () => {
+    const prevNode = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
     process.env.WEBHOOK_SKIP_VERIFY = 'true';
-    const body = {
-        instanceId: 'inst-1',
-        slug: 'payment_status_updated',
-        actionEvent: { body: { order: { id: 'o1', paymentStatus: 'PAID' } } },
-    };
-    const result = parseWixWebhookRequest(body);
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    assert.equal(result.parsed.instanceId, 'inst-1');
+    try {
+        const body = {
+            instanceId: 'inst-1',
+            slug: 'payment_status_updated',
+            actionEvent: { body: { order: { id: 'o1', paymentStatus: 'PAID' } } },
+        };
+        const result = parseWixWebhookRequest(body);
+        assert.equal(result.ok, true);
+        if (!result.ok) return;
+        assert.equal(result.parsed.instanceId, 'inst-1');
+    } finally {
+        if (prevNode === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNode;
+    }
 });
 
 test('parseWixWebhookRequest rejects JWT without iss', () => {

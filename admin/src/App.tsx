@@ -1,9 +1,9 @@
 import { Bug, LayoutDashboard, Package, Ruler, Settings, DollarSign, Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from './lib/cn';
-import { isAppJwt, storeContextFromUrl } from './lib/wixContext';
+import { getStoredContext, isAppJwt, storeContextFromUrl, stripSensitiveQueryParams } from './lib/wixContext';
 import type { ApiError } from './lib/api';
-import { api, fetchConfig } from './lib/api';
+import { fetchConfig } from './lib/api';
 import { resolveAppContext } from './lib/resolveAppContext';
 import type { StoreConfigPublic } from './lib/types';
 import HomePage from './pages/HomePage';
@@ -19,7 +19,7 @@ const baseTabs = [
 
 export default function App() {
     const [appContext, setAppContext] = useState<string | null>(() => {
-        const c = storeContextFromUrl();
+        const c = getStoredContext() || storeContextFromUrl();
         return c && isAppJwt(c) ? c : null;
     });
     const [activeTab, setActiveTab] = useState<string>('settings');
@@ -77,14 +77,7 @@ export default function App() {
                 }
 
                 setAppContext(resolved);
-                const url = new URL(window.location.href);
-                url.searchParams.set('context', resolved);
-                window.history.replaceState({}, '', url.toString());
-
-                api.defaults.params = {
-                    ...api.defaults.params,
-                    context: resolved,
-                };
+                stripSensitiveQueryParams();
 
                 const cfg = await fetchConfig();
                 if (!cancelled) {

@@ -87,8 +87,6 @@ async function handleGetShippingRates(req: any, res: any) {
             path: req.path,
             instanceId: instance,
             country: dest.country,
-            city: dest.city,
-            zip: dest.postalCode,
             items: wixReq.lineItems?.length ?? 0,
         });
 
@@ -97,10 +95,7 @@ async function handleGetShippingRates(req: any, res: any) {
             path: req.path,
             store_id: meta.instanceId,
             destination: String(dest.country || ''),
-            destination_city: dest.city,
-            destination_zip: dest.postalCode,
             items: wixReq.lineItems?.length ?? 0,
-            user_agent: req.headers['user-agent'],
         });
 
         const { shippingRates, hint } = await calculateWixShippingRates(wixReq, meta);

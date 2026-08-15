@@ -54,12 +54,13 @@ export function decryptSecret(ciphertext: string): string {
     }
 }
 
-/** Decrypt at-rest secrets; plaintext legacy values are returned as-is. */
+/** Decrypt at-rest secrets; JWT / opaque legacy plaintext is returned as-is. */
 export function decryptStoredSecret(value: string): string {
     if (!value) return value;
     try {
         return decryptSecret(value);
     } catch {
-        return value;
+        if (value.includes('.') || value.startsWith('OAU') || value.length < 40) return value;
+        return '';
     }
 }

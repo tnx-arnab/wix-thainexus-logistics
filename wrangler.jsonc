@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "thai-nexus-wix",
   "account_id": "60982be87817726f0bbc988e9122e2b7",
-  "workers_dev": true,
+  "workers_dev": false,
   "main": "api/src/worker.ts",
   "alias": {
     "body-parser": "./api/src/stubs/body-parser.ts"

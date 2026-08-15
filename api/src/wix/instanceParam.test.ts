@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import test from 'node:test';
-import { instanceIdFromDashboardQuery } from './instanceParam.js';
+import { dashboardIdentityFromQuery, instanceIdFromDashboardQuery } from './instanceParam.js';
+import { webhookVerifySkipped } from './verify.js';
 
 const INSTANCE_ID = '7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4';
 
@@ -45,10 +46,50 @@ test('instanceIdFromDashboardQuery rejects unsigned JWT payloads', () => {
 });
 
 test('instanceIdFromDashboardQuery allows plain UUID only when enabled', () => {
+    const prevNode = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
     process.env.WEBHOOK_SKIP_VERIFY = '';
     process.env.ALLOW_PLAIN_INSTANCE_ID = '';
     assert.equal(instanceIdFromDashboardQuery(INSTANCE_ID), null);
 
     process.env.ALLOW_PLAIN_INSTANCE_ID = 'true';
     assert.equal(instanceIdFromDashboardQuery(INSTANCE_ID), INSTANCE_ID);
+
+    process.env.NODE_ENV = 'production';
+    assert.equal(instanceIdFromDashboardQuery(INSTANCE_ID), null);
+    if (prevNode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevNode;
+});
+
+test('dashboardIdentityFromQuery uses Wix uid from verified JWT', () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    process.env.WIX_PUBLIC_KEY = publicKey;
+    process.env.WIX_APP_ID = 'app-id-test';
+    process.env.WEBHOOK_SKIP_VERIFY = '';
+    process.env.ALLOW_PLAIN_INSTANCE_ID = '';
+
+    const token = signedInstanceJwt(privateKey, { instanceId: INSTANCE_ID, uid: 'wix-user-9' });
+    assert.deepEqual(dashboardIdentityFromQuery(token), {
+        instanceId: INSTANCE_ID,
+        userId: 'wix-user-9',
+    });
+});
+
+test('webhookVerifySkipped is ignored in production', () => {
+    const prevNode = process.env.NODE_ENV;
+    const prevSkip = process.env.WEBHOOK_SKIP_VERIFY;
+    process.env.WEBHOOK_SKIP_VERIFY = 'true';
+    process.env.NODE_ENV = 'development';
+    assert.equal(webhookVerifySkipped(), true);
+    process.env.NODE_ENV = 'production';
+    assert.equal(webhookVerifySkipped(), false);
+    if (prevNode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevNode;
+    if (prevSkip === undefined) delete process.env.WEBHOOK_SKIP_VERIFY;
+    else process.env.WEBHOOK_SKIP_VERIFY = prevSkip;
 });

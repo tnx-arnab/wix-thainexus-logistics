@@ -10,10 +10,11 @@ import {
     removeDataStore,
 } from '../auth.js';
 import { exchangeWixToken } from '../wix/oauth.js';
-import { instanceIdFromDashboardQuery } from '../wix/instanceParam.js';
+import { dashboardIdentityFromQuery } from '../wix/instanceParam.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
 import { instanceIdFromWixClaims, webhookVerifySkipped } from '../wix/verify.js';
 import { verifiedWebhookClaims } from '../wix/webhookAuth.js';
+import { bootstrapCookieHeader, clientErrorMessage, requestIsHttps } from '../httpSecurity.js';
 
 const router = Router();
 
@@ -73,12 +74,10 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
         }
 
         const tokens = await exchangeWixToken(exchangeCode, oauthRedirectUrl());
-        const fromInstance = instanceParam
-            ? instanceIdFromDashboardQuery(instanceParam)
-            : null;
+        const identity = instanceParam ? dashboardIdentityFromQuery(instanceParam) : null;
         const instanceId =
             tokens.instanceId ||
-            fromInstance ||
+            identity?.instanceId ||
             instanceIdFromAccessToken(tokens.access_token) ||
             '';
 
@@ -88,6 +87,8 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             );
         }
 
+        const userId = identity?.userId || 'owner';
+
         await persistOAuthSession({
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -95,7 +96,7 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             instance_id: instanceId,
             site_id: tokens.siteId,
             meta_site_id: tokens.metaSiteId,
-            user: { id: 'owner', email: 'merchant@wix.com' },
+            user: { id: userId, email: 'merchant@wix.com' },
         });
 
         await logInstallEvent({
@@ -108,8 +109,8 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
         const context = encodePayload({
             instance_id: instanceId,
             context: instanceId,
-            user: { id: 'owner', email: 'merchant@wix.com' },
-            owner: { id: 'owner', email: 'merchant@wix.com' },
+            user: { id: userId, email: 'merchant@wix.com' },
+            owner: { id: userId, email: 'merchant@wix.com' },
             access_token: tokens.access_token,
             scope: 'wix',
             site_id: tokens.siteId,
@@ -124,13 +125,15 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             );
         }
 
-        return res.redirect(`${base}/?context=${encodeURIComponent(context)}`);
+        res.setHeader('Set-Cookie', bootstrapCookieHeader(context, 24 * 60 * 60, requestIsHttps(req)));
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        return res.redirect(`${base}/`);
     } catch (err) {
-        const message = err instanceof Error ? err.message : 'OAuth failed';
+        const message = clientErrorMessage(err, 'Install failed');
         await logInstallEvent({
             route: routeLabel,
             ok: false,
-            message,
+            message: err instanceof Error ? err.message : 'OAuth failed',
             has_code: Boolean(exchangeCode),
         });
         return res.status(500).send(oauthErrorPage('Install failed', message));

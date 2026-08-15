@@ -55,7 +55,7 @@ test('GET /health d1 not ok when DB missing', async () => {
     });
 });
 
-test('GET /api/setup uses d1_ok and requires JWT_KEY', async () => {
+test('GET /api/setup returns ready only', async () => {
     const prevJwt = process.env.JWT_KEY;
     process.env.JWT_KEY = 'jwt-key-for-setup-test';
     process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'test-encryption-key-16';
@@ -66,16 +66,15 @@ test('GET /api/setup uses d1_ok and requires JWT_KEY', async () => {
     try {
         await withApp(true, async (base) => {
             const body = await (await fetch(`${base}/api/setup`)).json();
-            assert.equal(body.checks.d1_ok, true);
-            assert.equal('supabase_url' in body.checks, false);
-            assert.equal('supabase_secret_key' in body.checks, false);
+            assert.equal(typeof body.ready, 'boolean');
+            assert.equal('checks' in body, false);
         });
 
         process.env.JWT_KEY = '';
         await withApp(true, async (base) => {
             const body = await (await fetch(`${base}/api/setup`)).json();
-            assert.equal(body.checks.d1_ok, true);
             assert.equal(body.ready, false);
+            assert.equal('checks' in body, false);
         });
     } finally {
         if (prevJwt === undefined) delete process.env.JWT_KEY;

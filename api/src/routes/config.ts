@@ -8,6 +8,7 @@ import {
     validateShipper,
 } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
+import { clientErrorMessage } from '../httpSecurity.js';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get('/', async (req, res) => {
         return res.json(await getConfigPublic(session.instanceId));
     } catch (err) {
         return res.status(500).json({
-            message: err instanceof Error ? err.message : 'Failed to load settings',
+            message: clientErrorMessage(err, 'Failed to load settings'),
         });
     }
 });

@@ -43,3 +43,14 @@ test('decryptStoredSecret returns legacy plaintext', () => {
         else process.env.ENCRYPTION_KEY = prevEnc;
     }
 });
+
+test('decryptStoredSecret does not return failed ciphertext as a token', () => {
+    const prevEnc = process.env.ENCRYPTION_KEY;
+    try {
+        process.env.ENCRYPTION_KEY = 'encryption-key-16+';
+        assert.equal(decryptStoredSecret('A'.repeat(64)), '');
+    } finally {
+        if (prevEnc === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = prevEnc;
+    }
+});

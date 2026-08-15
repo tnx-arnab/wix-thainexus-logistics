@@ -117,11 +117,10 @@ try {
 
     const setup = await getJson('/api/setup');
     assert(setup.status === 200, `setup status ${setup.status}`);
-    assert(setup.body.checks?.d1_ok === true, `setup ${JSON.stringify(setup.body)}`);
-    assert(!('supabase_url' in (setup.body.checks || {})), 'setup still has supabase_url');
-    assert(!('supabase_secret_key' in (setup.body.checks || {})), 'setup still has supabase_secret_key');
+    assert(setup.body.ready === true, `setup ${JSON.stringify(setup.body)}`);
+    assert(!('checks' in setup.body), 'setup must not expose secret inventory');
 
-    console.log('worker local ok', { health: health.body, setup: setup.body.checks });
+    console.log('worker local ok', { health: health.body, setup: setup.body });
 } finally {
     cleanup();
 }

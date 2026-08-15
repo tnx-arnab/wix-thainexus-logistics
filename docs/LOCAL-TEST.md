@@ -22,7 +22,7 @@ Point Wix App URL, Redirect, Dashboard, SPI `deploymentUri`, and webhooks at tha
 npx wrangler d1 execute thai-nexus-wix --local --command "SELECT instance_id FROM stores"
 ```
 
-4. `GET .../api/setup` → `checks.ready` / `checks.d1_ok` true
+4. `GET .../api/setup` → `{ ready: true }` (no `checks` inventory)
 
 ## Merchant setup
 

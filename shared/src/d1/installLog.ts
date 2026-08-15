@@ -50,11 +50,8 @@ export type RateTraceEntry = {
     phase: 'received' | 'result';
     store_id?: string;
     destination?: string;
-    destination_city?: string;
-    destination_zip?: string;
     items?: number;
     path?: string;
-    user_agent?: string;
     quotes?: number;
     duration_ms?: number;
     ok?: boolean;
@@ -107,26 +104,36 @@ export async function listMerchantSpiEvents(
 export async function logRateTrace(entry: RateTraceEntry): Promise<void> {
     const id = `rtr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const loggedAt = new Date().toISOString();
+    const instanceId = entry.store_id || RATE_TRACE_STORE;
 
     try {
         await insertDebugLogRow({
             id,
-            instanceId: RATE_TRACE_STORE,
+            instanceId,
             loggedAt,
             data: { kind: 'rate_trace', ...entry },
         });
-        await trimDebugLogsByKind('rate_trace', MAX_RATE_TRACES);
+        await trimDebugLogsByKind(
+            'rate_trace',
+            MAX_RATE_TRACES,
+            entry.store_id ? entry.store_id : undefined
+        );
     } catch (err) {
         console.error('[rate_trace]', err instanceof Error ? err.message : err);
     }
 }
 
-export async function listRateTraces(limit = 30): Promise<Array<{ logged_at: string } & RateTraceEntry>> {
-    const rows = await listDebugLogRowsByKind<RateTraceEntry>('rate_trace', limit);
-    return rows.map((row) => ({
-        logged_at: row.logged_at,
-        ...row.data,
-    }));
+export async function listRateTraces(
+    limit = 30,
+    instanceId?: string
+): Promise<Array<{ logged_at: string } & RateTraceEntry>> {
+    const rows = await listDebugLogRowsByKind<RateTraceEntry>('rate_trace', limit, instanceId);
+    return rows
+        .filter((row) => !instanceId || row.instance_id === instanceId || row.data.store_id === instanceId)
+        .map((row) => ({
+            logged_at: row.logged_at,
+            ...row.data,
+        }));
 }
 
 export async function listInstallLogs(limit = 30): Promise<

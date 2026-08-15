@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getStoredContext, storeContextFromUrl } from './wixContext';
 import type {
     ProductSearchResult,
     ProductPhysicalResult,
@@ -10,22 +11,26 @@ import type {
 } from './types';
 
 export const api = axios.create({
+    withCredentials: true,
     headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-    },
-    params: {
         'ngrok-skip-browser-warning': 'true',
     },
 });
 
 api.interceptors.request.use((config) => {
     const context =
+        (typeof config.headers?.['X-Wix-Context'] === 'string' && config.headers['X-Wix-Context']) ||
         (config.params?.context as string | undefined) ||
-        new URLSearchParams(window.location.search).get('context');
+        getStoredContext() ||
+        storeContextFromUrl();
     if (context) {
-        config.params = { ...config.params, context };
+        config.headers.set('X-Wix-Context', context);
+    }
+    if (config.params && 'context' in config.params) {
+        const { context: _dropped, ...rest } = config.params as Record<string, unknown>;
+        config.params = rest;
     }
 
     return config;
@@ -170,7 +175,7 @@ export async function fetchProductDocumentFlag(
     productId: string
 ): Promise<{ isDocument: boolean }> {
     const { data } = await api.get<{ isDocument: boolean }>(
-        `/api/products/${productId}/document-flag`
+        `/api/products/${encodeURIComponent(productId)}/document-flag`
     );
 
     return data;
@@ -183,7 +188,9 @@ export interface ProductThaiNexusFlags {
 }
 
 export async function fetchProductFlags(productId: string): Promise<ProductThaiNexusFlags> {
-    const { data } = await api.get<ProductThaiNexusFlags>(`/api/products/${productId}/flags`);
+    const { data } = await api.get<ProductThaiNexusFlags>(
+        `/api/products/${encodeURIComponent(productId)}/flags`
+    );
 
     return data;
 }
@@ -193,7 +200,7 @@ export async function saveProductFlags(
     flags: ProductThaiNexusFlags
 ): Promise<ProductThaiNexusFlags> {
     const { data } = await api.put<ProductThaiNexusFlags>(
-        `/api/products/${productId}/flags`,
+        `/api/products/${encodeURIComponent(productId)}/flags`,
         flags
     );
 
@@ -205,7 +212,7 @@ export async function saveProductDocumentFlag(
     isDocument: boolean
 ): Promise<{ isDocument: boolean }> {
     const { data } = await api.put<{ isDocument: boolean }>(
-        `/api/products/${productId}/document-flag`,
+        `/api/products/${encodeURIComponent(productId)}/document-flag`,
         { isDocument }
     );
 
