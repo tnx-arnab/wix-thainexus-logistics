@@ -9,9 +9,8 @@ import {
     persistOAuthSession,
     removeDataStore,
 } from '../auth.js';
-import { exchangeWixToken } from '../wix/oauth.js';
+import { exchangeWixToken, resolveWixInstallIdentity } from '../wix/oauth.js';
 import { dashboardIdentityFromQuery } from '../wix/instanceParam.js';
-import { instanceIdFromAccessToken } from '../wix/tokens.js';
 import { instanceIdFromWixClaims, webhookVerifySkipped } from '../wix/verify.js';
 import { verifiedWebhookClaims } from '../wix/webhookAuth.js';
 import { bootstrapCookieHeader, clientErrorMessage, requestIsHttps } from '../httpSecurity.js';
@@ -73,20 +72,11 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             );
         }
 
+        res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
         const tokens = await exchangeWixToken(exchangeCode, oauthRedirectUrl());
         const identity = instanceParam ? dashboardIdentityFromQuery(instanceParam) : null;
-        const instanceId =
-            tokens.instanceId ||
-            identity?.instanceId ||
-            instanceIdFromAccessToken(tokens.access_token) ||
-            '';
-
-        if (!instanceId) {
-            throw new Error(
-                'Could not determine Wix instanceId from token exchange. Check App Dashboard OAuth settings.'
-            );
-        }
-
+        const install = await resolveWixInstallIdentity(tokens, exchangeCode, req.query);
+        const instanceId = install.instanceId;
         const userId = identity?.userId || 'owner';
 
         await persistOAuthSession({
@@ -94,8 +84,8 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             refresh_token: tokens.refresh_token,
             scope: 'wix',
             instance_id: instanceId,
-            site_id: tokens.siteId,
-            meta_site_id: tokens.metaSiteId,
+            site_id: install.siteId || tokens.siteId,
+            meta_site_id: install.metaSiteId || tokens.metaSiteId,
             user: { id: userId, email: 'merchant@wix.com' },
         });
 
@@ -113,7 +103,7 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             owner: { id: userId, email: 'merchant@wix.com' },
             access_token: tokens.access_token,
             scope: 'wix',
-            site_id: tokens.siteId,
+            site_id: install.siteId || tokens.siteId,
         });
 
         const base = getAppBaseUrl();

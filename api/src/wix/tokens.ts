@@ -1,30 +1,56 @@
 import { getStore, updateStoreTokens } from '@thai-nexus/shared';
 import { refreshWixToken } from './oauth.js';
 
+const INSTANCE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function asInstanceId(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return INSTANCE_UUID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function unwrapJwtData(claims: Record<string, unknown>): Record<string, unknown> {
+    let data: unknown = claims.data ?? claims;
+    if (typeof data === 'string') {
+        try {
+            data = JSON.parse(data);
+        } catch {
+            return claims;
+        }
+    }
+    if (data && typeof data === 'object') return data as Record<string, unknown>;
+    return claims;
+}
+
 /** Decode JWT payload without verifying (used only to read instanceId claims). */
 export function decodeJwtPayload(token: string): Record<string, unknown> {
     try {
         const parts = token.split('.');
-        if (parts.length < 2) return {};
-        return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        // Wix codes/tokens are often `OAUTH2.<header>.<payload>.<sig>` (4 parts).
+        const payloadPart = parts.length >= 4 ? parts[parts.length - 2] : parts[1];
+        if (!payloadPart) return {};
+        return JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
     } catch {
         return {};
     }
 }
 
-/** Extract instanceId from Wix access token claims when OAuth body omits it. */
+/** Extract instanceId from Wix access token / OAUTH2 code claims when OAuth body omits it. */
 export function instanceIdFromAccessToken(accessToken: string): string | undefined {
     const claims = decodeJwtPayload(accessToken);
-    const data = (claims.data || claims) as Record<string, unknown>;
-    const instance = (data.instance || data) as Record<string, unknown>;
+    const data = unwrapJwtData(claims);
+    const instance = (
+        data.instance && typeof data.instance === 'object' ? data.instance : data
+    ) as Record<string, unknown>;
 
-    const id =
-        (claims.instanceId as string) ||
-        (data.instanceId as string) ||
-        (instance.instanceId as string) ||
-        (instance.instance_id as string);
-
-    return id?.trim() || undefined;
+    return (
+        asInstanceId(claims.instanceId) ||
+        asInstanceId(data.instanceId) ||
+        asInstanceId(data.instance_id) ||
+        asInstanceId(instance.instanceId) ||
+        asInstanceId(instance.instance_id)
+    );
 }
 
 /** Opaque OAUxxx tokens have no exp; do not treat that as expired. */

@@ -59,6 +59,7 @@ export function applySecurityHeaders(_req: Request, res: Response, next: NextFun
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', FRAME_ANCESTORS);
+    res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
     res.removeHeader('X-Powered-By');
     next();
 }
@@ -68,5 +69,6 @@ export function securityHeadersRecord(): Record<string, string> {
         'Referrer-Policy': 'no-referrer',
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': FRAME_ANCESTORS,
+        'Cross-Origin-Opener-Policy': 'unsafe-none',
     };
 }

@@ -1,6 +1,6 @@
 /**
  * Wix OAuth helpers (self-hosted app).
- * Docs: https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/about-authentication
+ * Docs: https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/custom-authentication-deprecated
  */
 
 export type WixTokenResponse = {
@@ -12,6 +12,24 @@ export type WixTokenResponse = {
     siteId?: string;
     metaSiteId?: string;
 };
+
+const INSTANCE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function asInstanceId(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return INSTANCE_UUID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+    try {
+        const data = await res.json();
+        return data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    } catch {
+        return {};
+    }
+}
 
 function requireEnv(name: string): string {
     const value = process.env[name]?.trim();
@@ -86,6 +104,89 @@ export async function refreshWixToken(refreshToken: string): Promise<WixTokenRes
     }
 
     return data;
+}
+
+/** Token Info: instanceId for opaque OAuth / custom-auth access tokens. */
+export async function fetchWixTokenInfo(accessToken: string): Promise<{
+    instanceId?: string;
+    siteId?: string;
+}> {
+    try {
+        const res = await fetch('https://www.wixapis.com/oauth2/token-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: accessToken }),
+        });
+        const data = await readJson(res);
+        if (!res.ok) return {};
+        return {
+            instanceId: asInstanceId(data.instanceId) || asInstanceId(data.instance_id),
+            siteId: typeof data.siteId === 'string' ? data.siteId : undefined,
+        };
+    } catch {
+        return {};
+    }
+}
+
+/** Get App Instance using the just-exchanged access token (custom auth). */
+export async function fetchWixAppInstance(accessToken: string): Promise<{
+    instanceId?: string;
+    siteId?: string;
+    metaSiteId?: string;
+}> {
+    try {
+        const res = await fetch('https://www.wixapis.com/apps/v1/instance', {
+            headers: { Authorization: accessToken },
+        });
+        const data = await readJson(res);
+        if (!res.ok) return {};
+        const instance = (data.instance || {}) as Record<string, unknown>;
+        const site = (data.site || {}) as Record<string, unknown>;
+        return {
+            instanceId: asInstanceId(instance.instanceId) || asInstanceId(data.instanceId),
+            siteId: typeof site.siteId === 'string' ? site.siteId : undefined,
+            metaSiteId: typeof site.metaSiteId === 'string' ? site.metaSiteId : undefined,
+        };
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Wix custom-auth redirect includes `code` + `instanceId`.
+ * Token exchange does not return instanceId; Token Info / JWT / query fill it in.
+ */
+export async function resolveWixInstallIdentity(
+    tokens: WixTokenResponse,
+    authCode: string,
+    query: { instanceId?: unknown; instance_id?: unknown }
+): Promise<{ instanceId: string; siteId?: string; metaSiteId?: string }> {
+    const tokenInfo = await fetchWixTokenInfo(tokens.access_token);
+    const appInstance = tokenInfo.instanceId
+        ? {}
+        : await fetchWixAppInstance(tokens.access_token);
+    const { instanceIdFromAccessToken } = await import('./tokens.js');
+
+    const instanceId =
+        asInstanceId(tokens.instanceId) ||
+        tokenInfo.instanceId ||
+        appInstance.instanceId ||
+        instanceIdFromAccessToken(tokens.access_token) ||
+        instanceIdFromAccessToken(authCode) ||
+        asInstanceId(query.instanceId) ||
+        asInstanceId(query.instance_id);
+
+    if (!instanceId) {
+        throw new Error(
+            'Could not determine Wix instanceId from token exchange. Check App Dashboard OAuth settings.'
+        );
+    }
+
+    return {
+        instanceId,
+        siteId: tokens.siteId || tokenInfo.siteId || appInstance.siteId,
+        metaSiteId: tokens.metaSiteId || appInstance.metaSiteId,
+    };
 }
 
 /** Decode instance id from Wix instance query param (base64 JSON). */
