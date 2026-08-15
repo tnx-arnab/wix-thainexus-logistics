@@ -70,13 +70,3 @@ export function securityHeadersRecord(): Record<string, string> {
         'Content-Security-Policy': FRAME_ANCESTORS,
     };
 }
-
-export function payloadTooLargeResponse(): Response {
-    return new Response(JSON.stringify({ message: 'Payload too large' }), {
-        status: 413,
-        headers: {
-            'Content-Type': 'application/json',
-            ...securityHeadersRecord(),
-        },
-    });
-}

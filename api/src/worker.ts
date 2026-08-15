@@ -3,13 +3,23 @@ import { bufferRequestBody, PayloadTooLargeError } from './bufferRequestBody.js'
 import { createApp } from './app.js';
 import { bindWorkerExecutionContext, runWithWorkerContext } from './workerContext.js';
 import { bindWorkerDb, type AppD1 } from '@thai-nexus/shared';
-import { payloadTooLargeResponse, securityHeadersRecord } from './httpSecurity.js';
+import { securityHeadersRecord } from './httpSecurity.js';
 
 /** Public root is not a storefront - Wix Dashboard opens with a signed instance JWT. */
 function blank404(): Response {
     return new Response(null, {
         status: 404,
         headers: { ...securityHeadersRecord(), 'Cache-Control': 'no-store' },
+    });
+}
+
+function payloadTooLargeResponse(): Response {
+    return new Response(JSON.stringify({ message: 'Payload too large' }), {
+        status: 413,
+        headers: {
+            'Content-Type': 'application/json',
+            ...securityHeadersRecord(),
+        },
     });
 }
 
