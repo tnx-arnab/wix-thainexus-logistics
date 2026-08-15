@@ -66,16 +66,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
     app.use(jsonBodyMiddleware());
 
     app.get('/health', async (_req, res) => {
-        let supabase: { ok: boolean; message?: string } = { ok: false };
+        let d1: { ok: boolean; message?: string } = { ok: false };
 
         try {
-            const { getSupabase } = await import('@thai-nexus/shared');
-            const { error } = await getSupabase().from('stores').select('instance_id').limit(1);
-            supabase = error ? { ok: false, message: error.message } : { ok: true };
+            const { probeDb } = await import('@thai-nexus/shared');
+            await probeDb();
+            d1 = { ok: true };
         } catch (err) {
-            supabase = {
+            d1 = {
                 ok: false,
-                message: err instanceof Error ? err.message : 'Supabase not configured',
+                message: err instanceof Error ? err.message : 'D1 not configured',
             };
         }
 
@@ -83,7 +83,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
             ok: true,
             platform: 'wix',
             runtime: serveStatic ? 'node' : 'cloudflare-workers',
-            supabase: { ok: supabase.ok },
+            d1: d1.ok ? { ok: true } : { ok: false, message: d1.message },
         });
     });
 

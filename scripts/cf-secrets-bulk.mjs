@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Upload .dev.vars to Cloudflare Worker secrets (supports multiline PEM values).
- * Skips CLOUDFLARE_* keys and comments.
+ * Skips CLOUDFLARE_* and SUPABASE_* keys and comments.
  */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -43,7 +43,7 @@ for (const line of fs.readFileSync(devVarsPath, 'utf8').split('\n')) {
     if (match) {
         flush();
         currentKey = match[1];
-        if (match[1].startsWith('CLOUDFLARE_')) {
+        if (match[1].startsWith('CLOUDFLARE_') || match[1].startsWith('SUPABASE_')) {
             currentKey = null;
             continue;
         }

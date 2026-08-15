@@ -5,8 +5,6 @@ import {
     setProductPhysicalOverride,
     readyForRatesFromPhysical,
     mergeProductPhysical,
-    supabaseHasPhysicalOverrideColumn,
-    PHYSICAL_OVERRIDE_MIGRATION_SQL,
     type ProductFlags,
     type ProductPhysicalOverride,
 } from '@thai-nexus/shared';
@@ -123,25 +121,20 @@ router.put('/:id/physical', async (req, res) => {
 
         let savedOverride = false;
         let overrideError: string | undefined;
-        const hasOverrideColumn = await supabaseHasPhysicalOverrideColumn();
-        if (!hasOverrideColumn) {
-            overrideError = `Missing Supabase column physical_override. Run: ${PHYSICAL_OVERRIDE_MIGRATION_SQL}`;
-        } else {
-            try {
-                const catalogItemIds = await listWixCatalogItemIdsForPhysical(
-                    session.accessToken,
-                    id,
-                    session.siteId
-                );
-                for (const catalogId of catalogItemIds) {
-                    await setProductPhysicalOverride(session.instanceId, catalogId, submittedOverride);
-                }
-                savedOverride = true;
-            } catch (err) {
-                overrideError =
-                    err instanceof Error ? err.message : 'Could not save physical_override in Supabase';
-                console.warn('[physical_override]', overrideError);
+        try {
+            const catalogItemIds = await listWixCatalogItemIdsForPhysical(
+                session.accessToken,
+                id,
+                session.siteId
+            );
+            for (const catalogId of catalogItemIds) {
+                await setProductPhysicalOverride(session.instanceId, catalogId, submittedOverride);
             }
+            savedOverride = true;
+        } catch (err) {
+            overrideError =
+                err instanceof Error ? err.message : 'Could not save physical_override in D1';
+            console.warn('[physical_override]', overrideError);
         }
 
         const map = await resolveProductPhysicalMap(session.instanceId, session.accessToken, [id], session.siteId);
@@ -152,7 +145,7 @@ router.put('/:id/physical', async (req, res) => {
         if (overrideError) warnings.push(overrideError);
         if (ready && !savedOverride) {
             warnings.push(
-                'Checkout rates need Supabase physical_override until Wix returns weight for this product.'
+                'Checkout rates need D1 physical_override until Wix returns weight for this product.'
             );
         }
 
@@ -161,7 +154,7 @@ router.put('/:id/physical', async (req, res) => {
             readyForRates: ready,
             saved: true,
             savedOverride,
-            ratesPersisted: !hasOverrideColumn || savedOverride,
+            ratesPersisted: savedOverride,
             overrideError,
             warning: warnings.length ? warnings.join(' ') : undefined,
             wixWeightVisible: Boolean(physical.weightKg && !physical.fromOverride),

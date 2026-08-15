@@ -1,6 +1,6 @@
 import { calculateTotalCommission } from '../commission.js';
 import { convertFromThb } from '../currency.js';
-import { appendDebugLog, isDebugEnabled } from '../supabase/debugLog.js';
+import { appendDebugLog, isDebugEnabled } from '../d1/debugLog.js';
 import { packItems } from '../packing.js';
 import { DebugApiCall, DebugFinalQuote, DebugLogBox, DebugLogProduct } from '../types/debug.js';
 import {

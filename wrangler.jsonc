@@ -28,6 +28,14 @@
   "observability": {
     "enabled": true
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "thai-nexus-wix",
+      "database_id": "9bf3cc29-148a-4bfd-b8f3-434c1ec0d6ec",
+      "migrations_dir": "migrations"
+    }
+  ],
   "vars": {
     "NODE_ENV": "production",
     "DEBUG_MODE": "false",

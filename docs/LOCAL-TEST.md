@@ -2,41 +2,27 @@
 
 Use this when `npm run dev` and `cloudflared` are running.
 
-## Current tunnel (session)
+API is Wrangler on port **8787** (D1 local). Vite on 5173 proxies `/api` there.
 
-Replace after each new `cloudflared tunnel --url http://localhost:3001`:
+## Tunnel
 
-- Base: `https://institutes-gray-allocation-preferences.trycloudflare.com`
-- OAuth: `https://institutes-gray-allocation-preferences.trycloudflare.com/api/auth`
-- Dashboard: `https://institutes-gray-allocation-preferences.trycloudflare.com/`
-- SPI base (`deploymentUri`): same base URL + `/`
-- Webhooks: `https://institutes-gray-allocation-preferences.trycloudflare.com/api/webhooks/orders` (and lifecycle)
+```bash
+cloudflared tunnel --url http://localhost:8787
+```
 
-## Wix App Dashboard (paste now)
-
-**Develop → OAuth**
-
-- App URL: `https://institutes-gray-allocation-preferences.trycloudflare.com/api/auth`
-- Redirect URL: same as App URL
-- Save
-
-**Extensions**
-
-- Dashboard Page URL: `https://institutes-gray-allocation-preferences.trycloudflare.com/`
-- Shipping Rates `deploymentUri`: `https://institutes-gray-allocation-preferences.trycloudflare.com/`
-
-**Webhooks** (callback URLs)
-
-- **eCommerce → Payment status updated** → `https://institutes-gray-allocation-preferences.trycloudflare.com/api/webhooks/orders` (shipments run only when status is **PAID**)
-- App installed / removed → `.../api/webhooks/app-lifecycle`
-- Remove deprecated **Stores → Order Paid** if still listed
+Point Wix App URL, Redirect, Dashboard, SPI `deploymentUri`, and webhooks at that tunnel (same paths as production).
 
 ## Install on a test site
 
 1. Wix Dev Center → **Test App** → open on a development site
 2. Complete install; you should land on the admin with Settings
-3. Supabase **stores** table → one row (`instance_id`)
-4. `GET .../api/setup` → `checks.ready` / `checks.supabase_ok` true
+3. Confirm a `stores` row:
+
+```bash
+npx wrangler d1 execute thai-nexus-wix --local --command "SELECT instance_id FROM stores"
+```
+
+4. `GET .../api/setup` → `checks.ready` / `checks.d1_ok` true
 
 ## Merchant setup
 
@@ -47,8 +33,9 @@ Replace after each new `cloudflared tunnel --url http://localhost:3001`:
 ## Commands (two terminals)
 
 ```bash
+npx wrangler d1 migrations apply thai-nexus-wix --local
 npm run dev
-cloudflared tunnel --url http://localhost:3001
+cloudflared tunnel --url http://localhost:8787
 ```
 
-Verify: `curl -s https://YOUR-TUNNEL/health`
+Verify: `curl -s https://YOUR-TUNNEL/health` → `d1.ok: true`

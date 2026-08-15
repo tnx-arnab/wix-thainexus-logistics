@@ -27,6 +27,16 @@ export function instanceIdFromAccessToken(accessToken: string): string | undefin
     return id?.trim() || undefined;
 }
 
+/** Opaque OAUxxx tokens have no exp; do not treat that as expired. */
+export function accessTokenNeedsRefresh(
+    accessToken: string,
+    nowSec = Math.floor(Date.now() / 1000)
+): boolean {
+    const exp = Number(decodeJwtPayload(accessToken).exp);
+    if (!Number.isFinite(exp)) return false;
+    return exp <= nowSec + 120;
+}
+
 /**
  * Return a usable Wix access token for the instance.
  * Refreshes once when refresh_token is stored (best-effort).
@@ -35,18 +45,7 @@ export async function getValidAccessToken(instanceId: string): Promise<string | 
     const row = await getStore(instanceId);
     if (!row?.access_token) return null;
 
-    if (!row.refresh_token) {
-        return row.access_token;
-    }
-
-    // Proactive refresh only when token looks expired (exp claim).
-    const claims = decodeJwtPayload(row.access_token);
-    const exp = Number(claims.exp);
-    const skewSec = 120;
-    const stillValid =
-        Number.isFinite(exp) && exp > Math.floor(Date.now() / 1000) + skewSec;
-
-    if (stillValid) {
+    if (!row.refresh_token || !accessTokenNeedsRefresh(row.access_token)) {
         return row.access_token;
     }
 

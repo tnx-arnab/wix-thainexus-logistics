@@ -7,7 +7,7 @@ Production host: **`https://wix.thainexus.co.th`** (mirror of BC **`bc.thainexus
 ## API token (do not paste in chat)
 
 1. [Cloudflare → API Tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
-2. Template: **Edit Cloudflare Workers**
+2. Template: **Edit Cloudflare Workers**, then add **Account** → **D1** → **Edit**
 3. **Account resources** → Include → **point@thainexus.co.th** only
 4. **Zone resources** → Include → **thainexus.co.th** → **Edit** (DNS + custom domains)
 5. Create and copy the token once
@@ -19,7 +19,7 @@ CLOUDFLARE_API_TOKEN=your_token_here
 CLOUDFLARE_ACCOUNT_ID=60982be87817726f0bbc988e9122e2b7
 ```
 
-`npm run cf:secrets` **skips** `CLOUDFLARE_*` lines on purpose (CLI auth only).
+`npm run cf:secrets` **skips** `CLOUDFLARE_*` and `SUPABASE_*` lines on purpose.
 
 Verify:
 

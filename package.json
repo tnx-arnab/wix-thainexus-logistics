@@ -8,7 +8,7 @@
     "shared"
   ],
   "scripts": {
-    "dev": "concurrently -n api,admin -c blue,green \"npm run dev -w api\" \"npm run dev -w admin\"",
+    "dev": "mkdir -p admin/dist && concurrently -n api,admin -c blue,green \"wrangler dev --port 8787\" \"npm run dev -w admin\"",
     "dev:api": "npm run dev -w api",
     "dev:admin": "npm run dev -w admin",
     "build": "npm run build -w admin && npm run build -w api",
@@ -17,7 +17,8 @@
     "cf:dev": "npm run cf:build && wrangler dev",
     "cf:deploy": "npm run cf:build && wrangler deploy",
     "cf:secrets": "node scripts/cf-secrets-bulk.mjs",
-    "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts shared/src/crypto.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts api/src/wix/instanceParam.test.ts"
+    "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts shared/src/crypto.test.ts shared/src/d1/d1.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts api/src/wix/instanceParam.test.ts api/src/wix/tokens.test.ts api/src/health.test.ts",
+    "test:d1": "tsx --test shared/src/d1/d1.test.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

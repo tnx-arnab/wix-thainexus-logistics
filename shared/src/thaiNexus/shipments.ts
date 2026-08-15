@@ -1,6 +1,6 @@
 import { shipmentCrud } from './client.js';
 import { getApiToken } from './store.js';
-import { listStoredOrderShipments } from '../supabase/orderShipments.js';
+import { listStoredOrderShipments } from '../d1/orderShipments.js';
 import {
     ShipmentDetail,
     ShipmentListResponse,
@@ -58,7 +58,7 @@ export type ShipmentListResult = ShipmentListResponse & {
 
 /**
  * List shipments for the merchant dashboard. Prefer Thai Nexus as source of truth,
- * merge in webhook-tracked request numbers from Supabase, and fall back locally when
+ * merge in webhook-tracked request numbers from D1, and fall back locally when
  * the upstream list call fails.
  */
 export async function listShipmentsForStore(

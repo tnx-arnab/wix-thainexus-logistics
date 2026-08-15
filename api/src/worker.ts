@@ -1,10 +1,8 @@
 import { httpServerHandler } from 'cloudflare:node';
 import { bufferRequestBody } from './bufferRequestBody.js';
 import { createApp } from './app.js';
-import {
-    bindWorkerExecutionContext,
-    clearWorkerExecutionContext,
-} from './workerContext.js';
+import { bindWorkerExecutionContext, runWithWorkerContext } from './workerContext.js';
+import { bindWorkerDb, type AppD1 } from '@thai-nexus/shared';
 
 /** Public root is not a storefront - Wix Dashboard opens with ?context=. */
 function blank404(): Response {
@@ -59,7 +57,7 @@ function hydrateProcessEnv(env: Record<string, unknown>): void {
 export default {
     async fetch(
         request: Request,
-        env: { ASSETS: AssetBinding } & Record<string, unknown>,
+        env: { ASSETS: AssetBinding; DB?: AppD1 } & Record<string, unknown>,
         ctx: ExecutionContext
     ): Promise<Response> {
         hydrateProcessEnv(env);
@@ -77,12 +75,11 @@ export default {
 
         if (isApi) {
             const apiRequest = await bufferRequestBody(request);
-            bindWorkerExecutionContext(ctx);
-            try {
-                return await apiHandler.fetch(apiRequest, env, ctx);
-            } finally {
-                clearWorkerExecutionContext();
-            }
+            bindWorkerDb(env.DB);
+            return runWithWorkerContext(ctx, async () => {
+                bindWorkerExecutionContext(ctx);
+                return apiHandler.fetch(apiRequest, env, ctx);
+            });
         }
 
         const token = url.searchParams.get('token') || url.searchParams.get('code');

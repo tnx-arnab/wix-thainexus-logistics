@@ -19,9 +19,6 @@ ENCRYPTION_KEY=
 # Local only: trust plain ?instanceId= UUID (production uses Wix-signed instance JWT).
 # ALLOW_PLAIN_INSTANCE_ID=true
 
-SUPABASE_URL=
-SUPABASE_SECRET_KEY=
-
 THAI_NEXUS_FUNCTIONS_URL=https://app.thainexus.co.th/functions/
 THAI_NEXUS_TIMEOUT_MS=7000
 THAI_NEXUS_SHIPMENT_TIMEOUT_MS=15000

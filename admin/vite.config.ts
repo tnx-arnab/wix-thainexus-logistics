@@ -8,15 +8,15 @@ export default defineConfig({
         strictPort: true,
         proxy: {
             '/api': {
-                target: 'http://localhost:3001',
+                target: 'http://localhost:8787',
                 changeOrigin: true,
             },
             '/health': {
-                target: 'http://localhost:3001',
+                target: 'http://localhost:8787',
                 changeOrigin: true,
             },
             '/v1': {
-                target: 'http://localhost:3001',
+                target: 'http://localhost:8787',
                 changeOrigin: true,
             },
         },

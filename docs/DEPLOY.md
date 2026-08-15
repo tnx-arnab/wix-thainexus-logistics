@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. New Supabase project (not BC/Shopify) - run `supabase/schema.sql`
+1. D1 database `thai-nexus-wix` on point@ - see [D1.md](./D1.md)
 2. Wix App in [dev.wix.com](https://dev.wix.com/)
 3. Cloudflare account + custom domain `wix.thainexus.co.th`
 4. Fresh secrets: `JWT_KEY`, `ENCRYPTION_KEY` (do not reuse BC)
@@ -51,8 +51,8 @@ Then set Wix OAuth / Dashboard / SPI / webhooks to `https://wix.thainexus.co.th`
 
 ## Verify
 
-1. `GET https://wix.thainexus.co.th/health` → `supabase.ok: true`
-2. Install app → row in `stores`
+1. `GET https://wix.thainexus.co.th/health` → `d1.ok: true`
+2. Install app → row in D1 `stores`
 3. Open Dashboard → Settings save token + shipper
 4. Checkout shows Thai Nexus Express rates
 5. Paid order creates `order_shipments`

@@ -57,11 +57,12 @@ export default function App() {
                 if (!resolved) {
                     try {
                         const health = await fetch('/health').then((r) => r.json());
-                        if (health?.supabase && !health.supabase.ok) {
+                        const db = health?.d1 || health?.supabase;
+                        if (db && !db.ok) {
                             setHealthHint(
-                                `Database error: ${health.supabase.message || 'Supabase not reachable'}`
+                                `Database error: ${db.message || 'D1 not reachable'}`
                             );
-                        } else if (health?.supabase?.ok) {
+                        } else if (db?.ok) {
                             setHealthHint(
                                 'Database is online, but this site is not installed yet. Reinstall the app from Wix.'
                             );
@@ -180,8 +181,10 @@ export default function App() {
                             </code>
                         </li>
                         <li>
-                            Run Supabase schema from{' '}
-                            <code className="text-xs bg-gray-100 px-1 rounded">supabase/schema.sql</code>
+                            Apply D1 migrations with{' '}
+                            <code className="text-xs bg-gray-100 px-1 rounded">
+                                npx wrangler d1 migrations apply thai-nexus-wix --local
+                            </code>
                         </li>
                         <li>
                             <a

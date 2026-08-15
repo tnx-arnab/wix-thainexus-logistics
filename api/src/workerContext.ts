@@ -1,22 +1,36 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 type WorkerCtx = { waitUntil(promise: Promise<unknown>): void };
 
-let activeCtx: WorkerCtx | undefined;
+const ctxAls = new AsyncLocalStorage<WorkerCtx>();
+let fallbackCtx: WorkerCtx | undefined;
 
 export function bindWorkerExecutionContext(ctx: WorkerCtx): void {
-    activeCtx = ctx;
+    fallbackCtx = ctx;
 }
 
 export function clearWorkerExecutionContext(): void {
-    activeCtx = undefined;
+    fallbackCtx = undefined;
+}
+
+export function runWithWorkerContext<T>(ctx: WorkerCtx, fn: () => Promise<T>): Promise<T> {
+    fallbackCtx = ctx;
+    return ctxAls.run(ctx, fn);
+}
+
+function backgroundCtx(): WorkerCtx | undefined {
+    return ctxAls.getStore() || fallbackCtx;
 }
 
 /** Wix webhooks must respond within ~1250ms; finish heavy work in the background on Workers. */
 export function deferWebhookWork(work: Promise<unknown>): void {
-    if (activeCtx) {
-        activeCtx.waitUntil(work);
-        return;
-    }
-    void work.catch((err) => {
+    const ctx = backgroundCtx();
+    const guarded = work.catch((err) => {
         console.error('[webhook background]', err);
     });
+    if (ctx) {
+        ctx.waitUntil(guarded);
+        return;
+    }
+    void guarded;
 }

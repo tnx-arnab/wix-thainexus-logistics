@@ -105,7 +105,7 @@ SPI config: `fallbackDefinitionMandatory: false`.
 
 ```bash
 npm run dev
-# terminal 2: cloudflared tunnel --url http://localhost:3001
+# terminal 2: cloudflared tunnel --url http://localhost:8787
 # point App URL + SPI deploymentUri at the tunnel
 # set WEBHOOK_SKIP_VERIFY=true only locally
 ```

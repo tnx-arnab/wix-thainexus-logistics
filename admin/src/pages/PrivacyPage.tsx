@@ -23,7 +23,7 @@ export default function PrivacyPage() {
                 </p>
                 <p>
                     Your store configuration (shipper address, commission rules, box definitions,
-                    product flags, and encrypted API token) is stored in Supabase, keyed by your
+                    product flags, and encrypted API token) is stored in Cloudflare D1, keyed by your
                     Wix instance id. Only authenticated merchants opening the app from the Wix
                     Dashboard can read or update this data.
                 </p>

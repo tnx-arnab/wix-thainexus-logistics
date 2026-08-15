@@ -65,7 +65,7 @@ export default function ProductsPage() {
             setMessage(
                 data.readyForRates
                     ? !data.ratesPersisted && data.warning
-                        ? `Saved in Wix, but checkout may miss rates until Supabase sync. ${data.warning}`
+                        ? `Saved in Wix, but checkout may miss rates until D1 sync. ${data.warning}`
                         : data.warning
                           ? `Saved (ready for rates). ${data.warning}`
                           : 'Saved. Product is ready for checkout rates (weight + L/W/H).'

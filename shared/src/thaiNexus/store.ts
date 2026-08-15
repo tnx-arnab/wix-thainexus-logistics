@@ -1,6 +1,6 @@
 import { decryptSecret, encryptSecret } from '../crypto.js';
-import { isDebugEnabled } from '../supabase/debugLog.js';
-import { getSupabase } from '../supabase/client.js';
+import { isDebugEnabled } from '../d1/debugLog.js';
+import { first, parseJson, run, toJson } from '../d1/client.js';
 import {
     sanitizeBoxes,
     sanitizeCommissionRules,
@@ -109,16 +109,12 @@ export function toPublic(config: StoreConfig | null): StoreConfigPublic {
 }
 
 export async function getConfig(instanceId: string) {
-    const { data, error } = await getSupabase()
-        .from('thai_nexus_config')
-        .select('data')
-        .eq('instance_id', instanceId)
-        .maybeSingle();
-
-    if (error) throw error;
-    if (!data?.data) return null;
-
-    return migrateConfig(data.data as StoreConfig);
+    const row = await first<{ data: string }>(
+        'SELECT data FROM thai_nexus_config WHERE instance_id = ?',
+        instanceId
+    );
+    if (!row?.data) return null;
+    return migrateConfig(parseJson<StoreConfig>(row.data));
 }
 
 export async function getConfigPublic(instanceId: string) {
@@ -169,22 +165,21 @@ export async function saveConfig(
         data.apiTokenEncrypted = existing.apiTokenEncrypted;
     }
 
-    const { error } = await getSupabase().from('thai_nexus_config').upsert({
-        instance_id: instanceId,
-        data,
-        updated_at: data.updatedAt || new Date().toISOString(),
-    });
-
-    if (error) throw error;
+    const updatedAt = data.updatedAt || new Date().toISOString();
+    await run(
+        `INSERT INTO thai_nexus_config (instance_id, data, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(instance_id) DO UPDATE SET
+           data = excluded.data,
+           updated_at = excluded.updated_at`,
+        instanceId,
+        toJson(data),
+        updatedAt
+    );
 
     return toPublic(data);
 }
 
 export async function deleteConfig(instanceId: string) {
-    const { error } = await getSupabase()
-        .from('thai_nexus_config')
-        .delete()
-        .eq('instance_id', instanceId);
-
-    if (error) throw error;
+    await run('DELETE FROM thai_nexus_config WHERE instance_id = ?', instanceId);
 }

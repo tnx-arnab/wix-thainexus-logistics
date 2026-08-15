@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import {
-    getSupabase,
     listInstallLogs,
     listRateTraces,
     getConfig,
     getApiToken,
     validateStoreReadyForRates,
-    supabaseHasPhysicalOverrideColumn,
-    PHYSICAL_OVERRIDE_MIGRATION_SQL,
     isDebugEnabled,
+    hasDb,
+    probeDb,
 } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
 
@@ -18,19 +17,15 @@ const router = Router();
 
 /** Public install diagnostics (booleans only; no secrets, URLs, or counts). */
 router.get('/', async (_req, res) => {
-    let supabaseOk = false;
-    let physicalOverrideColumn = false;
+    let d1Ok = false;
 
     try {
-        const { error } = await getSupabase()
-            .from('stores')
-            .select('instance_id', { count: 'exact', head: true });
-        supabaseOk = !error;
-        if (supabaseOk) {
-            physicalOverrideColumn = await supabaseHasPhysicalOverrideColumn();
+        if (hasDb()) {
+            await probeDb();
+            d1Ok = true;
         }
     } catch {
-        supabaseOk = false;
+        d1Ok = false;
     }
 
     const publicKeyRaw = process.env.WIX_PUBLIC_KEY?.trim() || '';
@@ -45,7 +40,7 @@ router.get('/', async (_req, res) => {
             Boolean(process.env.JWT_KEY) &&
             Boolean(process.env.ENCRYPTION_KEY) &&
             Boolean(process.env.WIX_PUBLIC_KEY) &&
-            supabaseOk,
+            d1Ok,
         checks: {
             wix_app_id: Boolean(process.env.WIX_APP_ID),
             wix_app_secret: Boolean(process.env.WIX_APP_SECRET),
@@ -55,12 +50,7 @@ router.get('/', async (_req, res) => {
             encryption_key: Boolean(process.env.ENCRYPTION_KEY),
             app_url: Boolean(process.env.APP_URL?.trim()),
             auth_callback: Boolean(process.env.AUTH_CALLBACK?.trim()),
-            supabase_url: Boolean(process.env.SUPABASE_URL),
-            supabase_secret_key: Boolean(
-                process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-            ),
-            supabase_ok: supabaseOk,
-            product_flags_physical_override: physicalOverrideColumn,
+            d1_ok: d1Ok,
         },
     });
 });
@@ -78,13 +68,6 @@ router.get('/rates-ready', async (req, res) => {
     const hasThaiNexusToken = Boolean(await getApiToken(session.instanceId));
     const storeError = validateStoreReadyForRates(config, hasThaiNexusToken);
     if (storeError) blockers.push(storeError);
-
-    const physicalOverrideColumn = await supabaseHasPhysicalOverrideColumn();
-    if (!physicalOverrideColumn) {
-        blockers.push(
-            `Supabase product_flags.physical_override is missing. Run: ${PHYSICAL_OVERRIDE_MIGRATION_SQL}`
-        );
-    }
 
     let recentSpiHits = 0;
     try {
