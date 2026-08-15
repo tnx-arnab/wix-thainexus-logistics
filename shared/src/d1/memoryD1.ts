@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from 'node:sqlite'; // Node 22+; CI uses setup-node 22
 import type { AppD1 } from './client.js';
 
 type Bound = {
