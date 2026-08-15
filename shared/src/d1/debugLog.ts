@@ -161,16 +161,16 @@ export async function listDebugLogRowsByKind<T>(
               limit
           );
 
-    return rows
-        .map((row) => {
-            const data = parseJson<T | null>(row.data, null);
-            if (data == null) return null;
-            return {
-                id: row.id,
-                instance_id: row.instance_id,
-                logged_at: row.logged_at,
-                data,
-            };
-        })
-        .filter((row): row is { id: string; instance_id: string; logged_at: string; data: T } => row != null);
+    const parsed: Array<{ id: string; instance_id: string; logged_at: string; data: T }> = [];
+    for (const row of rows) {
+        const data = parseJson<T | null>(row.data, null);
+        if (data == null) continue;
+        parsed.push({
+            id: row.id,
+            instance_id: row.instance_id,
+            logged_at: row.logged_at,
+            data,
+        });
+    }
+    return parsed;
 }
