@@ -47,8 +47,10 @@ const child = spawn(
         '--local',
         '--persist-to',
         persist,
+        '--show-interactive-dev-session',
+        'false',
     ],
-    { env, stdio: ['ignore', 'pipe', 'pipe'] }
+    { env, stdio: ['ignore', 'pipe', 'pipe'], detached: true }
 );
 
 let output = '';
@@ -60,7 +62,11 @@ child.stderr.on('data', (chunk) => {
 });
 
 function cleanup() {
-    child.kill('SIGTERM');
+    try {
+        if (child.pid) process.kill(-child.pid, 'SIGTERM');
+    } catch {
+        child.kill('SIGTERM');
+    }
     rmSync(persist, { recursive: true, force: true });
 }
 
@@ -76,7 +82,7 @@ function assert(cond, message) {
 const ready = await new Promise((resolve) => {
     const start = Date.now();
     const timer = setInterval(() => {
-        if (/Ready on|localhost:8798|127\.0\.0\.1:8798/i.test(output)) {
+        if (/Ready on|localhost:8798|127\.0\.0\.1:8798|Starting local server/i.test(output)) {
             clearInterval(timer);
             resolve(true);
         } else if (Date.now() - start > 45000) {
@@ -91,9 +97,10 @@ const ready = await new Promise((resolve) => {
 });
 
 assert(ready, 'wrangler dev did not become ready');
+await new Promise((resolve) => setTimeout(resolve, 500));
 
 async function getJson(path) {
-    const res = await fetch(`${base}${path}`);
+    const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(10000) });
     const body = await res.json();
     return { status: res.status, body };
 }
