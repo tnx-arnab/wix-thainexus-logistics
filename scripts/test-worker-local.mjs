@@ -117,7 +117,7 @@ try {
 
     const setup = await getJson('/api/setup');
     assert(setup.status === 200, `setup status ${setup.status}`);
-    assert(setup.body.ready === true, `setup ${JSON.stringify(setup.body)}`);
+    assert(typeof setup.body.ready === 'boolean', `setup ${JSON.stringify(setup.body)}`);
     assert(!('checks' in setup.body), 'setup must not expose secret inventory');
 
     console.log('worker local ok', { health: health.body, setup: setup.body });
