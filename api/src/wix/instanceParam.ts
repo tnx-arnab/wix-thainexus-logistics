@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { instanceIdFromWixClaims, verifyWixJwt, type WixVerifiedClaims } from './verify.js';
 
 const UUID_RE =
@@ -20,12 +21,58 @@ export type DashboardIdentity = {
     userId: string;
 };
 
-/** Wix Dashboard iframe sends signed `instance` JWT. Unsigned payloads are rejected. */
+/**
+ * Wix Dashboard iframe sends the legacy app instance query parameter
+ * (`signature.data`, HMAC-SHA256 over `data` with the app secret) - NOT a JWT.
+ * See https://dev.wix.com/docs/build-apps/develop-your-app/access/app-instances/parse-the-app-instance-query-parameter
+ */
+function identityFromAppInstanceParam(value: string): DashboardIdentity | null {
+    const secret = process.env.WIX_APP_SECRET?.trim();
+    if (!secret) return null;
+
+    const idx = value.indexOf('.');
+    if (idx <= 0) return null;
+    const signaturePart = value.slice(0, idx);
+    const dataPart = value.slice(idx + 1);
+    if (!signaturePart || !dataPart) return null;
+
+    let provided: Buffer;
+    try {
+        provided = Buffer.from(signaturePart.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    } catch {
+        return null;
+    }
+
+    const expected = crypto.createHmac('sha256', secret).update(dataPart).digest();
+    if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+        return null;
+    }
+
+    try {
+        const json = JSON.parse(
+            Buffer.from(dataPart.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+        ) as Record<string, unknown>;
+        const instanceId = json.instanceId;
+        if (typeof instanceId === 'string' && UUID_RE.test(instanceId)) {
+            const uid = json.uid ?? json.siteOwnerId ?? json.userId;
+            const userId = uid != null && String(uid).trim() ? String(uid).trim() : 'owner';
+            return { instanceId, userId };
+        }
+    } catch {
+        return null;
+    }
+
+    return null;
+}
+
+/** Wix Dashboard iframe sends a signed `instance` value (app instance param or JWT). */
 export function dashboardIdentityFromQuery(value: string): DashboardIdentity | null {
     const trimmed = value.trim();
     if (!trimmed) return null;
 
-    if (trimmed.split('.').length === 3) {
+    const parts = trimmed.split('.');
+
+    if (parts.length === 3) {
         try {
             const claims = verifyWixJwt(trimmed);
             const instanceId = instanceIdFromWixClaims(claims);
@@ -36,6 +83,11 @@ export function dashboardIdentityFromQuery(value: string): DashboardIdentity | n
             return null;
         }
         return null;
+    }
+
+    if (parts.length === 2) {
+        const fromInstance = identityFromAppInstanceParam(trimmed);
+        if (fromInstance) return fromInstance;
     }
 
     if (allowPlainInstanceUuid() && UUID_RE.test(trimmed)) {

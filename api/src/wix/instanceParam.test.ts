@@ -61,6 +61,42 @@ test('instanceIdFromDashboardQuery allows plain UUID only when enabled', () => {
     else process.env.NODE_ENV = prevNode;
 });
 
+function signedAppInstanceParam(secret: string, data: Record<string, unknown>): string {
+    const encoded = Buffer.from(JSON.stringify(data)).toString('base64url');
+    const signature = crypto
+        .createHmac('sha256', secret)
+        .update(encoded)
+        .digest('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    return `${signature}.${encoded}`;
+}
+
+test('dashboardIdentityFromQuery verifies the 2-part app instance parameter', () => {
+    process.env.WEBHOOK_SKIP_VERIFY = '';
+    process.env.ALLOW_PLAIN_INSTANCE_ID = '';
+    process.env.WIX_APP_SECRET = 'super-secret';
+
+    const param = signedAppInstanceParam('super-secret', {
+        instanceId: INSTANCE_ID,
+        uid: 'wix-user-42',
+    });
+    assert.deepEqual(dashboardIdentityFromQuery(param), {
+        instanceId: INSTANCE_ID,
+        userId: 'wix-user-42',
+    });
+});
+
+test('dashboardIdentityFromQuery rejects app instance param with wrong secret', () => {
+    process.env.WEBHOOK_SKIP_VERIFY = '';
+    process.env.ALLOW_PLAIN_INSTANCE_ID = '';
+    process.env.WIX_APP_SECRET = 'correct-secret';
+
+    const param = signedAppInstanceParam('attacker-secret', { instanceId: INSTANCE_ID });
+    assert.equal(dashboardIdentityFromQuery(param), null);
+});
+
 test('dashboardIdentityFromQuery uses Wix uid from verified JWT', () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
         modulusLength: 2048,

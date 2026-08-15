@@ -161,9 +161,13 @@ export default function App() {
                             <code className="text-xs bg-gray-100 px-1 rounded">.dev.vars</code>
                         </li>
                         <li>
-                            Set App URL / Redirect to{' '}
+                            Set App URL to{' '}
                             <code className="text-xs bg-gray-100 px-1 rounded">
-                                https://wix.thainexus.co.th/api/auth
+                                https://wix.thainexus.co.th
+                            </code>{' '}
+                            and Redirect to{' '}
+                            <code className="text-xs bg-gray-100 px-1 rounded">
+                                https://wix.thainexus.co.th/api/oauth/v1/signup
                             </code>
                         </li>
                         <li>
@@ -215,43 +219,45 @@ export default function App() {
         : [...baseTabs];
 
     return (
-        <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto font-sans">
-            <header className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-primary flex items-center gap-3">
-                        <Package className="text-secondary w-8 h-8" />
-                        Thai Nexus Logistics
-                    </h1>
-                    <p className="text-gray-500 mt-1">
-                        Manage shipping API settings and store origin.
-                    </p>
-                    {config?.instanceId && (
-                        <p className="text-xs text-gray-400 mt-1">
-                            Instance:{' '}
-                            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                                {config.instanceId}
-                            </code>
+        <div className="min-h-screen p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto font-sans">
+            <header className="mb-8">
+                <div className="flex items-center gap-3">
+                    <Package className="text-secondary w-7 h-7 shrink-0" />
+                    <div className="min-w-0">
+                        <h1 className="text-2xl font-bold text-primary leading-tight truncate">
+                            Thai Nexus Logistics
+                        </h1>
+                        <p className="text-gray-500 text-sm">
+                            Manage shipping API settings and store origin.
                         </p>
-                    )}
+                    </div>
                 </div>
-                <div className="flex flex-wrap gap-2 bg-white p-1 rounded-xl shadow-sm border border-gray-100">
+                {config?.instanceId && (
+                    <p className="text-xs text-gray-400 mt-2">
+                        Instance:{' '}
+                        <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 break-all">
+                            {config.instanceId}
+                        </code>
+                    </p>
+                )}
+                <nav className="mt-5 flex flex-wrap gap-1.5 bg-white p-1.5 rounded-xl shadow-sm border border-gray-100">
                     {tabs.map(({ id, label, icon: Icon }) => (
                         <button
                             key={id}
                             type="button"
                             onClick={() => setActiveTab(id)}
                             className={cn(
-                                'flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all text-sm',
+                                'flex items-center gap-2 px-3.5 py-2 rounded-lg font-medium transition-all text-sm whitespace-nowrap',
                                 activeTab === id
                                     ? 'bg-primary text-white shadow-md'
                                     : 'text-gray-600 hover:bg-gray-50'
                             )}
                         >
-                            <Icon size={16} />
+                            <Icon size={16} className="shrink-0" />
                             {label}
                         </button>
                     ))}
-                </div>
+                </nav>
             </header>
 
             {error && (
