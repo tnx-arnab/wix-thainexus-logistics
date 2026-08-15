@@ -20,7 +20,11 @@
     "cf:dev": "npm run cf:build && wrangler dev",
     "cf:deploy": "npm run cf:build && wrangler deploy",
     "cf:secrets": "node scripts/cf-secrets-bulk.mjs",
+    "test": "npm run test:unit && npm run test:schema && npm run test:worker",
     "test:unit": "tsx --test shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts shared/src/crypto.test.ts shared/src/d1/d1.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts api/src/wix/instanceParam.test.ts api/src/wix/tokens.test.ts api/src/health.test.ts",
+    "test:schema": "node scripts/test-d1-schema.mjs",
+    "test:worker": "node scripts/test-worker-local.mjs",
+    "test:prod": "node scripts/test-prod-smoke.mjs",
     "test:d1": "tsx --test shared/src/d1/d1.test.ts"
   },
   "devDependencies": {
