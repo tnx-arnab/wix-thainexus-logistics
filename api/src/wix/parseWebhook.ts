@@ -125,7 +125,7 @@ export function parseWixWebhookRequest(
     }
 
     try {
-        const claims = verifyWixJwt(token);
+        const claims = verifyWixJwt(token, { assertClaims: false });
         const parsed = parseVerifiedJwtClaims(claims);
         if (!parsed) {
             return { ok: false, reason: 'invalid-jwt-envelope' };

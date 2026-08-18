@@ -13,14 +13,14 @@ export function verifiedWebhookClaims(
     if (webhookVerifySkipped()) {
         if (!auth) return {};
         try {
-            return verifyWixJwt(auth) as Record<string, unknown>;
+            return verifyWixJwt(auth, { assertClaims: false }) as Record<string, unknown>;
         } catch {
             return {};
         }
     }
     if (!auth) return null;
     try {
-        return verifyWixJwt(auth) as Record<string, unknown>;
+        return verifyWixJwt(auth, { assertClaims: false }) as Record<string, unknown>;
     } catch {
         return null;
     }

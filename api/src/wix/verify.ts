@@ -68,7 +68,11 @@ export function instanceIdFromWixClaims(
  * Verify Wix SPI / webhook JWT using the app public key (PEM).
  * Local: WEBHOOK_SKIP_VERIFY=true skips signature checks.
  */
-export function verifyWixJwt(token: string): WixVerifiedClaims {
+export function verifyWixJwt(
+    token: string,
+    opts: { assertClaims?: boolean } = {}
+): WixVerifiedClaims {
+    const { assertClaims = true } = opts;
     if (webhookVerifySkipped()) {
         try {
             const parts = token.split('.');
@@ -90,7 +94,9 @@ export function verifyWixJwt(token: string): WixVerifiedClaims {
         algorithms: ['RS256'],
         clockTolerance: 120,
     }) as WixVerifiedClaims;
-    assertWixJwtClaims(claims);
+    // Wix webhook event JWTs are signed but omit iss/aud, unlike SPI request JWTs.
+    // The signature is the security boundary; only assert iss/aud where Wix sends them.
+    if (assertClaims) assertWixJwtClaims(claims);
     return claims;
 }
 
