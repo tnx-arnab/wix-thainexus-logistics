@@ -35,5 +35,8 @@ test('rateResponseToWix assigns unique codes per courier and human deliveryTime'
     const codes = shippingRates.map((r) => r.code).sort();
     assert.deepEqual(codes, ['flex_dap', 'prime_ddp']);
     const prime = shippingRates.find((r) => r.code === 'prime_ddp');
+    assert.equal(prime?.title, 'Thai Nexus Express Prime DDP');
     assert.equal(prime?.logistics?.deliveryTime, '5 business days');
+    const flex = shippingRates.find((r) => r.code === 'flex_dap');
+    assert.equal(flex?.title, 'Thai Nexus Express Flex DAP');
 });

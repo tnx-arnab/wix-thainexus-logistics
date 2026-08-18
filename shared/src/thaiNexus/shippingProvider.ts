@@ -11,20 +11,19 @@ export function normalizeServiceId(value: string): string {
 }
 
 /**
- * Strip the carrier brand prefix from an API service name so BC checkout shows
- * "Thai Nexus Express (Flex DAP)" instead of "Thai Nexus Express (Thai Nexus Express Flex DAP)".
+ * Checkout title: "Thai Nexus Express Flex DDP".
+ * Idempotent if the API already includes the brand prefix.
  */
 export function formatServiceDisplayName(serviceName: string): string {
     const trimmed = serviceName.trim();
-    if (!trimmed) return trimmed;
+    if (!trimmed) return CARRIER_DISPLAY_NAME;
 
     const prefix = CARRIER_DISPLAY_NAME;
     if (trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
-        const rest = trimmed.slice(prefix.length).trim();
-        if (rest) return rest;
+        return trimmed;
     }
 
-    return trimmed;
+    return `${prefix} ${trimmed}`;
 }
 
 /** Registered BC carrier zone multiselect values - quote.code must match one of these at checkout. */

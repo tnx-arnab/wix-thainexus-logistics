@@ -2,6 +2,7 @@ import {
     BcRateRequest,
     BcRateResponse,
     calculateRates,
+    formatServiceDisplayName,
     getStore,
     normalizeServiceId,
     rateItemCatalogIds,
@@ -287,7 +288,7 @@ export function rateResponseToWix(
         quotes.map((q) => {
             return {
                 code: wixShippingRateCode(q),
-                title: q.display_name || 'Thai Nexus Express',
+                title: formatServiceDisplayName(q.display_name || ''),
                 logistics: {
                     deliveryTime: formatDeliveryTimeForWix(q) || 'Standard delivery',
                 },
