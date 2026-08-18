@@ -1,6 +1,5 @@
 import { Bug, LayoutDashboard, Package, Ruler, Settings, DollarSign, Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import AppShell from './components/AppShell';
 import { cn } from './lib/cn';
 import { getStoredContext, isAppJwt, storeContextFromUrl, stripSensitiveQueryParams } from './lib/wixContext';
 import type { ApiError } from './lib/api';
@@ -106,19 +105,16 @@ export default function App() {
 
     if (bootstrapping) {
         return (
-            <AppShell>
-                <div className="flex-1 p-10 flex flex-col items-center justify-center">
-                    <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                    <p className="text-gray-500 mt-4 font-medium">Connecting to your store…</p>
-                </div>
-            </AppShell>
+            <div className="min-h-screen p-10 flex flex-col items-center justify-center">
+                <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-gray-500 mt-4 font-medium">Connecting to your store…</p>
+            </div>
         );
     }
 
     if (!appContext) {
         return (
-            <AppShell>
-                <div className="flex-1 p-10 max-w-2xl mx-auto w-full">
+            <div className="min-h-screen p-10 max-w-2xl mx-auto">
                 <div className="tnxl-card border-l-4 border-l-primary">
                     <h1 className="text-xl font-bold text-primary">Thai Nexus Logistics</h1>
                     {error ? (
@@ -214,8 +210,7 @@ export default function App() {
                         </a>
                     </p>
                 </div>
-                </div>
-            </AppShell>
+            </div>
         );
     }
 
@@ -224,13 +219,19 @@ export default function App() {
         : [...baseTabs];
 
     return (
-        <AppShell>
-            <div className="flex-1 p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto w-full">
-            <div className="mb-8">
-                <h1 className="text-xl font-bold text-primary leading-tight">Store shipping</h1>
-                <p className="text-gray-500 text-sm mt-1">
-                    Live Thai Nexus rates at Wix checkout, plus boxes, fees, and auto shipments.
-                </p>
+        <div className="min-h-screen p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto font-sans">
+            <header className="mb-8">
+                <div className="flex items-center gap-3">
+                    <Package className="text-secondary w-7 h-7 shrink-0" />
+                    <div className="min-w-0">
+                        <h1 className="text-2xl font-bold text-primary leading-tight truncate">
+                            Thai Nexus Logistics
+                        </h1>
+                        <p className="text-gray-500 text-sm">
+                            Manage shipping API settings and store origin.
+                        </p>
+                    </div>
+                </div>
                 {config?.instanceId && (
                     <p className="text-xs text-gray-400 mt-2">
                         Instance:{' '}
@@ -257,7 +258,7 @@ export default function App() {
                         </button>
                     ))}
                 </nav>
-            </div>
+            </header>
 
             {error && (
                 <div className="mb-6 p-4 rounded-lg bg-red-50 text-secondary border border-red-100">
@@ -274,7 +275,6 @@ export default function App() {
             ) : (
                 <HomePage tab={activeTab} config={config} onReload={reload} />
             )}
-            </div>
-        </AppShell>
+        </div>
     );
 }
