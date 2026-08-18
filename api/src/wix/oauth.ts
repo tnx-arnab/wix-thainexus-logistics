@@ -1,6 +1,7 @@
 /**
  * Wix OAuth helpers (self-hosted app).
- * Docs: https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/custom-authentication-deprecated
+ * Easy OAuth: https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/authenticate-using-oauth.md
+ * Legacy custom auth kept as a fallback until Dev Center Custom Authentication is off.
  */
 
 export type WixTokenResponse = {
@@ -37,6 +38,89 @@ function requireEnv(name: string): string {
     return value;
 }
 
+function tokenErrorDetail(data: Record<string, unknown>, status: number): string {
+    const detail =
+        (typeof data.message === 'string' && data.message) ||
+        (typeof data.error_description === 'string' && data.error_description) ||
+        (typeof data.error === 'string' && data.error) ||
+        (data.details ? JSON.stringify(data.details) : '');
+    return detail ? `(${status}): ${detail}` : `(${status})`;
+}
+
+function parseAccessTokenPayload(data: Record<string, unknown>): WixTokenResponse | null {
+    const nested = data.body;
+    let src: Record<string, unknown> = data;
+    if (typeof nested === 'string') {
+        try {
+            const parsed = JSON.parse(nested) as unknown;
+            if (parsed && typeof parsed === 'object') src = parsed as Record<string, unknown>;
+        } catch {
+            src = data;
+        }
+    } else if (nested && typeof nested === 'object') {
+        src = nested as Record<string, unknown>;
+    }
+
+    const accessToken =
+        typeof src.access_token === 'string'
+            ? src.access_token
+            : typeof data.access_token === 'string'
+              ? data.access_token
+              : undefined;
+    if (!accessToken) return null;
+
+    const expiresIn = Number(src.expires_in ?? data.expires_in);
+    const tokenType =
+        typeof src.token_type === 'string'
+            ? src.token_type
+            : typeof data.token_type === 'string'
+              ? data.token_type
+              : undefined;
+
+    return {
+        access_token: accessToken,
+        refresh_token:
+            typeof src.refresh_token === 'string'
+                ? src.refresh_token
+                : typeof data.refresh_token === 'string'
+                  ? data.refresh_token
+                  : undefined,
+        expires_in: Number.isFinite(expiresIn) ? expiresIn : undefined,
+        token_type: tokenType,
+        instanceId: asInstanceId(src.instanceId) || asInstanceId(src.instance_id),
+    };
+}
+
+/**
+ * Easy OAuth: mint a site-scoped access token from app credentials + instanceId.
+ * Tokens are valid for 4 hours. No refresh token.
+ */
+export async function createWixAccessToken(instanceId: string): Promise<WixTokenResponse> {
+    const appId = requireEnv('WIX_APP_ID');
+    const appSecret = requireEnv('WIX_APP_SECRET');
+    const id = asInstanceId(instanceId);
+    if (!id) throw new Error('Invalid Wix instanceId');
+
+    const res = await fetch('https://www.wixapis.com/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            grant_type: 'client_credentials',
+            client_id: appId,
+            client_secret: appSecret,
+            instance_id: id,
+        }),
+    });
+
+    const data = await readJson(res);
+    const parsed = parseAccessTokenPayload(data);
+    if (!res.ok || !parsed) {
+        throw new Error(`Wix Easy OAuth token failed ${tokenErrorDetail(data, res.status)}`);
+    }
+
+    return { ...parsed, instanceId: parsed.instanceId || id };
+}
+
 /** Exchange install token / authorization code for access + refresh tokens. */
 export async function exchangeWixToken(
     code: string,
@@ -61,26 +145,13 @@ export async function exchangeWixToken(
         body: JSON.stringify(body),
     });
 
-    const data = (await res.json()) as WixTokenResponse & {
-        message?: string;
-        error?: string;
-        error_description?: string;
-        details?: unknown;
-    };
-    if (!res.ok || !data.access_token) {
-        const detail =
-            data.message ||
-            data.error_description ||
-            data.error ||
-            (data.details ? JSON.stringify(data.details) : '');
-        throw new Error(
-            detail
-                ? `Wix token exchange failed (${res.status}): ${detail}`
-                : `Wix token exchange failed (${res.status})`
-        );
+    const data = await readJson(res);
+    const parsed = parseAccessTokenPayload(data);
+    if (!res.ok || !parsed) {
+        throw new Error(`Wix token exchange failed ${tokenErrorDetail(data, res.status)}`);
     }
 
-    return data;
+    return parsed;
 }
 
 export async function refreshWixToken(refreshToken: string): Promise<WixTokenResponse> {
@@ -98,12 +169,13 @@ export async function refreshWixToken(refreshToken: string): Promise<WixTokenRes
         }),
     });
 
-    const data = (await res.json()) as WixTokenResponse & { message?: string };
-    if (!res.ok || !data.access_token) {
-        throw new Error(data.message || `Wix refresh failed (${res.status})`);
+    const data = await readJson(res);
+    const parsed = parseAccessTokenPayload(data);
+    if (!res.ok || !parsed) {
+        throw new Error(`Wix refresh failed ${tokenErrorDetail(data, res.status)}`);
     }
 
-    return data;
+    return parsed;
 }
 
 /** Token Info: instanceId for opaque OAuth / custom-auth access tokens. */

@@ -39,7 +39,7 @@ npm run cf:deploy
 
 ## "Test App" shows ERR_NAME_NOT_RESOLVED
 
-That means your **browser cannot resolve the hostname** in Wix **App URL** (usually `wix.thainexus.co.th`). The Worker can be deployed while DNS is still missing or cached as "does not exist".
+That means your **browser cannot resolve** `wix.thainexus.co.th` (dashboard iframe / SPI). The Worker can be deployed while DNS is still missing or cached as "does not exist".
 
 ### 1. Confirm DNS (Terminal)
 
@@ -77,8 +77,8 @@ Under **Develop → OAuth** (app `253fa9c1-…` or your current App ID):
 
 | Field | Exact value |
 |-------|-------------|
-| App URL | `https://wix.thainexus.co.th/api/auth` |
-| Redirect URL | `https://wix.thainexus.co.th/api/auth` |
+| App ID / App Secret | Copy into `.dev.vars` |
+| Custom authentication (Legacy) | Off |
 
 Extensions: Dashboard + SPI → `https://wix.thainexus.co.th/`
 

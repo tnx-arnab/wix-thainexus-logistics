@@ -1,5 +1,5 @@
-import { getStore, updateStoreTokens } from '@thai-nexus/shared';
-import { refreshWixToken } from './oauth.js';
+import { getStore, setStore } from '@thai-nexus/shared';
+import { createWixAccessToken } from './oauth.js';
 
 const INSTANCE_UUID_RE =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,42 +53,51 @@ export function instanceIdFromAccessToken(accessToken: string): string | undefin
     );
 }
 
-/** Opaque OAUxxx tokens have no exp; do not treat that as expired. */
+/** JWT access tokens mint again when exp is near. Opaque tokens have no exp so always remint. */
 export function accessTokenNeedsRefresh(
     accessToken: string,
     nowSec = Math.floor(Date.now() / 1000)
 ): boolean {
     const exp = Number(decodeJwtPayload(accessToken).exp);
-    if (!Number.isFinite(exp)) return false;
+    if (!Number.isFinite(exp)) return true;
     return exp <= nowSec + 120;
+}
+
+async function cacheAccessToken(instanceId: string, accessToken: string): Promise<void> {
+    const existing = await getStore(instanceId);
+    await setStore({
+        instance_id: instanceId,
+        access_token: accessToken,
+        scope: existing?.scope || 'wix',
+        site_id: existing?.site_id || undefined,
+        meta_site_id: existing?.meta_site_id || undefined,
+        user: { id: 'owner', email: 'merchant@wix.com' },
+    });
 }
 
 /**
  * Return a usable Wix access token for the instance.
- * Refreshes once when refresh_token is stored (best-effort).
+ * Mints via Easy OAuth (client_credentials + instanceId) and caches until expiry.
  */
 export async function getValidAccessToken(instanceId: string): Promise<string | null> {
-    const row = await getStore(instanceId);
-    if (!row?.access_token) return null;
+    const id = asInstanceId(instanceId);
+    if (!id) return null;
 
-    if (!row.refresh_token || !accessTokenNeedsRefresh(row.access_token)) {
+    const row = await getStore(id);
+    if (row?.access_token && !accessTokenNeedsRefresh(row.access_token)) {
         return row.access_token;
     }
 
     try {
-        const refreshed = await refreshWixToken(row.refresh_token);
-        await updateStoreTokens(instanceId, {
-            access_token: refreshed.access_token,
-            refresh_token: refreshed.refresh_token || row.refresh_token,
-            scope: row.scope,
-        });
-        return refreshed.access_token;
+        const minted = await createWixAccessToken(id);
+        await cacheAccessToken(id, minted.access_token);
+        return minted.access_token;
     } catch (err) {
         console.warn(
-            '[wix-token-refresh]',
-            instanceId,
+            '[wix-token-mint]',
+            id,
             err instanceof Error ? err.message : err
         );
-        return row.access_token;
+        return row?.access_token || null;
     }
 }

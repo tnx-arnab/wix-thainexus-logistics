@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { logInstallEvent, redactInstanceData } from '@thai-nexus/shared';
-import { removeDataStore } from '../auth.js';
+import { provisionEasyOAuthInstance, removeDataStore } from '../auth.js';
 import type { WixWebhookRequest } from '../bodyMiddleware.js';
 import { deferWebhookWork } from '../workerContext.js';
 import { normalizeOrderWebhookBody, processOrderWebhook } from '../wix/orderWebhook.js';
@@ -22,6 +22,37 @@ function instanceFromRequest(req: WixWebhookRequest, body: Record<string, unknow
         if (meta.instanceId) return String(meta.instanceId);
     }
     return null;
+}
+
+const INSTANCE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function originInstanceIdFromBody(body: Record<string, unknown>): string | undefined {
+    const nested =
+        body.data && typeof body.data === 'object'
+            ? (body.data as Record<string, unknown>)
+            : {};
+    const raw =
+        body.originInstanceId ||
+        body.origin_instance_id ||
+        nested.originInstanceId ||
+        nested.origin_instance_id;
+    if (typeof raw !== 'string') return undefined;
+    const trimmed = raw.trim();
+    return INSTANCE_UUID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function isUninstallEvent(eventType: string): boolean {
+    return (
+        eventType.includes('remove') ||
+        eventType.includes('uninstall') ||
+        eventType.includes('deleted')
+    );
+}
+
+function isInstallEvent(eventType: string): boolean {
+    if (isUninstallEvent(eventType)) return false;
+    return eventType.includes('install') || eventType.includes('created');
 }
 
 function webhookAuthFailed(req: WixWebhookRequest): boolean {
@@ -149,15 +180,31 @@ router.post('/app-lifecycle', async (req: WixWebhookRequest, res) => {
                     instance_id: instanceId || undefined,
                 });
 
-                if (
-                    instanceId &&
-                    (eventType.includes('remove') ||
-                        eventType.includes('uninstall') ||
-                        eventType.includes('deleted'))
-                ) {
+                if (!instanceId) return;
+
+                if (isUninstallEvent(eventType)) {
                     await removeDataStore({
                         instance_id: instanceId,
                         user: { id: '0', email: '' },
+                    });
+                    return;
+                }
+
+                if (isInstallEvent(eventType)) {
+                    const originInstanceId = originInstanceIdFromBody(body);
+                    const accessToken = await provisionEasyOAuthInstance(
+                        instanceId,
+                        originInstanceId
+                    );
+                    await logInstallEvent({
+                        route: '/api/webhooks/app-lifecycle',
+                        ok: Boolean(accessToken),
+                        message: accessToken
+                            ? originInstanceId
+                                ? 'install_ok_cloned'
+                                : 'install_ok'
+                            : 'install_mint_failed',
+                        instance_id: instanceId,
                     });
                 }
             })()

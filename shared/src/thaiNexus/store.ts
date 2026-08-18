@@ -180,6 +180,36 @@ export async function saveConfig(
     return toPublic(data);
 }
 
+export async function copyConfigIfMissing(
+    fromInstanceId: string,
+    toInstanceId: string
+): Promise<boolean> {
+    const from = fromInstanceId.trim();
+    const to = toInstanceId.trim();
+    if (!from || !to || from === to) return false;
+
+    const dest = await first<{ instance_id: string }>(
+        'SELECT instance_id FROM thai_nexus_config WHERE instance_id = ?',
+        to
+    );
+    if (dest) return false;
+
+    const source = await first<{ data: string }>(
+        'SELECT data FROM thai_nexus_config WHERE instance_id = ?',
+        from
+    );
+    if (!source?.data) return false;
+
+    await run(
+        `INSERT INTO thai_nexus_config (instance_id, data, updated_at)
+         VALUES (?, ?, ?)`,
+        to,
+        source.data,
+        new Date().toISOString()
+    );
+    return true;
+}
+
 export async function deleteConfig(instanceId: string) {
     await run('DELETE FROM thai_nexus_config WHERE instance_id = ?', instanceId);
 }

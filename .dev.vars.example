@@ -6,6 +6,7 @@ CLOUDFLARE_API_TOKEN=
 CLOUDFLARE_ACCOUNT_ID=60982be87817726f0bbc988e9122e2b7
 
 APP_URL=https://wix.thainexus.co.th
+# Optional leftover Custom Auth callback until Dev Center toggle is off
 AUTH_CALLBACK=https://wix.thainexus.co.th/api/auth
 
 WIX_APP_ID=

@@ -28,7 +28,7 @@ npx wrangler d1 migrations apply thai-nexus-wix --local
 npm run dev
 ```
 
-5. Tunnel the API (`cloudflared tunnel --url http://localhost:8787`) and point App URL + SPI `deploymentUri` at the tunnel
+5. Tunnel the API (`cloudflared tunnel --url http://localhost:8787`) and point Dashboard iframe + SPI `deploymentUri` at the tunnel
 6. Deploy: `npm run cf:deploy` (after secrets via `npm run cf:secrets`)
 
 Setup guides: [WIX-APP-SETUP.md](docs/WIX-APP-SETUP.md) · [D1.md](docs/D1.md) · [DEPLOY.md](docs/DEPLOY.md)
@@ -38,8 +38,7 @@ Setup guides: [WIX-APP-SETUP.md](docs/WIX-APP-SETUP.md) · [D1.md](docs/D1.md) �
 | Path | Purpose |
 |---|---|
 | `GET /health` | Liveness + D1 probe |
-| `GET /api/auth` | Wix OAuth install |
-| `GET /api/session` | Dashboard bootstrap |
+| `GET /api/session` | Dashboard bootstrap (Easy OAuth mint) |
 | `GET/PUT /api/config` | Merchant settings |
 | `POST /v1/getRates` (also `/plugins-and-webhooks/…`) | Shipping Rates SPI |
 | `POST /api/webhooks/orders` | Auto shipments |
@@ -48,7 +47,7 @@ Setup guides: [WIX-APP-SETUP.md](docs/WIX-APP-SETUP.md) · [D1.md](docs/D1.md) �
 
 ## App Dashboard checklist
 
-- App URL / Redirect → `/api/auth`
-- Dashboard Page → admin SPA (`/?context=…`)
+- OAuth: App ID + secret only (Custom authentication off)
+- Dashboard Page → admin SPA (`/?instance=…`)
 - eCom Shipping Rates SPI → `deploymentUri` = `https://wix.thainexus.co.th/`
 - Webhooks: orders (prefer paid), app lifecycle, privacy if required

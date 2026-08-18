@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { getConfigPublic, getStoreToken, isDebugEnabled } from '@thai-nexus/shared';
+import { getConfigPublic, isDebugEnabled } from '@thai-nexus/shared';
 import { encodePayload, getSession, isAppContextJwt } from '../auth.js';
 import { bootstrapCookieHeader, clientErrorMessage, requestIsHttps } from '../httpSecurity.js';
 import { dashboardIdentityFromQuery } from '../wix/instanceParam.js';
+import { getValidAccessToken } from '../wix/tokens.js';
 
 const router = Router();
 
@@ -62,13 +63,13 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const accessToken = await getStoreToken(identity.instanceId);
+        const accessToken = await getValidAccessToken(identity.instanceId);
         if (!accessToken) {
             return res.status(401).json({
                 code: 'STORE_NOT_LINKED',
                 instanceId: identity.instanceId,
                 message:
-                    'This site is not connected yet. Reinstall Thai Nexus from the Wix App Market.',
+                    'Could not connect this Wix site. Confirm the app is installed and WIX_APP_ID / WIX_APP_SECRET are set.',
             });
         }
 
@@ -114,13 +115,13 @@ router.get('/context', async (req, res) => {
         return res.status(400).json({ message: 'Could not resolve instance id from context' });
     }
     try {
-        const accessToken = await getStoreToken(identity.instanceId);
+        const accessToken = await getValidAccessToken(identity.instanceId);
         if (!accessToken) {
             return res.status(401).json({
                 code: 'STORE_NOT_LINKED',
                 instanceId: identity.instanceId,
                 message:
-                    'This site is not connected yet. Reinstall Thai Nexus from the Wix App Market.',
+                    'Could not connect this Wix site. Confirm the app is installed and WIX_APP_ID / WIX_APP_SECRET are set.',
             });
         }
 

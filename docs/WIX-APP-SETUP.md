@@ -1,22 +1,24 @@
 # Wix App Dashboard setup
 
-## Create app
+## OAuth (Easy OAuth)
 
-1. Open [Wix App Dashboard](https://dev.wix.com/)
-2. Create app → name **Thai Nexus Logistics** (or Thainexus Express)
-3. Copy **App ID** and **App Secret** from **Develop → OAuth**
+1. Open [Wix App Dashboard](https://dev.wix.com/) → **Develop → OAuth**
+2. Copy **App ID** and **App Secret**. Leave **Custom authentication (Legacy)** off.
+3. Do not set App URL or Redirect URL. Wix installs the app inside Wix; we mint tokens with app ID, secret, and `instanceId`.
 4. Copy **Public key** (PEM) — **not on the OAuth page**. Use either:
    - App **Home** → **More Actions** (⋯) → **View ID & keys** → Public key, or
    - **Develop → Webhooks** → **Get Public Key** ([Wix docs](https://dev.wix.com/docs/build-apps/develop-your-app/access/authentication/verify-requests-received-from-wix))
 5. Put all three in `.env` / `.dev.vars` as `WIX_APP_ID`, `WIX_APP_SECRET`, `WIX_PUBLIC_KEY`
 
+Deploy this Worker **before** turning Custom authentication off. Existing sites keep working because we already have their `instanceId`.
+
 ## URLs (production)
 
 | Setting | Value |
 |---|---|
-| App URL | `https://wix.thainexus.co.th` (Wix opens `/api/oauth/v1/authorize?token=…`) |
-| Redirect URL | `https://wix.thainexus.co.th/api/oauth/v1/signup` |
-| Dashboard Page | `https://wix.thainexus.co.th/` |
+| OAuth | App ID + secret only (no App URL / Redirect URL) |
+| Dashboard Page iframe | `https://wix.thainexus.co.th/` |
+| App Instance Installed / Removed | `https://wix.thainexus.co.th/api/webhooks/app-lifecycle` |
 
 For local tunnel, replace the host with your ngrok/cloudflared URL.
 
@@ -106,6 +108,6 @@ SPI config: `fallbackDefinitionMandatory: false`.
 ```bash
 npm run dev
 # terminal 2: cloudflared tunnel --url http://localhost:8787
-# point App URL + SPI deploymentUri at the tunnel
+# point Dashboard iframe + SPI deploymentUri at the tunnel
 # set WEBHOOK_SKIP_VERIFY=true only locally
 ```

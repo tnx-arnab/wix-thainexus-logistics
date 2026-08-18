@@ -11,8 +11,7 @@
 
 | Setting | Value |
 |---|---|
-| App URL | `https://wix.thainexus.co.th/api/auth` |
-| Redirect URL | `https://wix.thainexus.co.th/api/auth` |
+| OAuth | App ID + secret only (Custom authentication off) |
 | Dashboard Page | `https://wix.thainexus.co.th/` |
 | SPI deploymentUri | `https://wix.thainexus.co.th/` |
 | SPI name | Thai Nexus Express |
@@ -32,7 +31,7 @@ npm run cf:deploy
 
 ### Custom domain DNS (`wix.thainexus.co.th`)
 
-**Test App** in Wix opens your **App URL** (`/api/auth`). If the browser shows `ERR_NAME_NOT_RESOLVED`, the hostname has no DNS yet (Worker deploy alone is not enough until the domain is attached).
+**Test App** in Wix installs inside Wix (no App URL redirect). The dashboard iframe still needs `wix.thainexus.co.th` DNS. If the browser shows `ERR_NAME_NOT_RESOLVED`, the hostname has no DNS yet (Worker deploy alone is not enough until the domain is attached).
 
 1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → account **point@thainexus.co.th** → zone **thainexus.co.th**
 2. **Workers & Pages** → **thai-nexus-wix** → **Settings** → **Domains & Routes** → **Add** → **Custom domain** → `wix.thainexus.co.th`  
@@ -47,7 +46,7 @@ curl -s https://wix.thainexus.co.th/health
 
 If `dig` is empty, wait a few minutes or remove and re-add the custom domain on the Worker. Flush local DNS: `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`
 
-Then set Wix OAuth / Dashboard / SPI / webhooks to `https://wix.thainexus.co.th` (not a trycloudflare URL).
+Then set Wix Dashboard / SPI / webhooks to `https://wix.thainexus.co.th` (not a trycloudflare URL).
 
 ## Verify
 

@@ -87,6 +87,28 @@ test('parseWixWebhookRequest accepts plain JSON in dev', () => {
     }
 });
 
+test('parseWixWebhookRequest accepts lifecycle JSON in dev skip-verify', () => {
+    const prevNode = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    process.env.WEBHOOK_SKIP_VERIFY = 'true';
+    try {
+        const body = {
+            instanceId: '7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4',
+            eventType: 'AppInstanceInstalled',
+            originInstanceId: '11111111-1111-1111-1111-111111111111',
+        };
+        const result = parseWixWebhookRequest(body);
+        assert.equal(result.ok, true);
+        if (!result.ok) return;
+        assert.equal(result.parsed.instanceId, body.instanceId);
+        assert.equal(result.parsed.eventType, 'AppInstanceInstalled');
+        assert.equal(result.parsed.eventBody.originInstanceId, body.originInstanceId);
+    } finally {
+        if (prevNode === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNode;
+    }
+});
+
 test('parseWixWebhookRequest rejects JWT without iss', () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
         modulusLength: 2048,

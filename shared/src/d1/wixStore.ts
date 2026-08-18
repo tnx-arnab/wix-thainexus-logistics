@@ -26,7 +26,7 @@ export async function setStore(session: SessionProps, options?: { requireToken?:
     if (!accessToken) {
         if (options?.requireToken) {
             throw new Error(
-                'Wix did not return an access token. Reinstall the app and confirm WIX_APP_ID, WIX_APP_SECRET, and AUTH_CALLBACK match the App Dashboard.'
+                'Wix did not return an access token. Confirm WIX_APP_ID and WIX_APP_SECRET, then reopen the app from Wix Dashboard.'
             );
         }
 

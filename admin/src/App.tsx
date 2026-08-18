@@ -161,13 +161,10 @@ export default function App() {
                             <code className="text-xs bg-gray-100 px-1 rounded">.dev.vars</code>
                         </li>
                         <li>
-                            Set App URL to{' '}
+                            On <strong>OAuth</strong>, copy App ID / Secret. Leave{' '}
+                            <strong>Custom authentication (Legacy)</strong> off. Dashboard iframe URL is{' '}
                             <code className="text-xs bg-gray-100 px-1 rounded">
-                                https://wix.thainexus.co.th
-                            </code>{' '}
-                            and Redirect to{' '}
-                            <code className="text-xs bg-gray-100 px-1 rounded">
-                                https://wix.thainexus.co.th/api/oauth/v1/signup
+                                https://wix.thainexus.co.th/
                             </code>
                         </li>
                         <li>

@@ -217,7 +217,7 @@ Three **independent** flags (BC has all three - Wix v1 must cover behavior even 
 
 | Capability | BC | Wix |
 |---|---|---|
-| OAuth | BC → `/api/auth` | Wix OAuth (App URL + Redirect URL) |
+| OAuth | BC → `/api/auth` | Easy OAuth (client credentials + instanceId; no App URL) |
 | Load / embed | `/api/load` → JWT `?context=` | Dashboard Page extension + Dashboard SDK |
 | Uninstall | `/api/uninstall` | App removed webhook - revoke tokens only |
 | User removed | `/api/remove-user` | Remove dashboard user mapping if stored; do not wipe config |
@@ -361,7 +361,7 @@ See also §5.7 GDPR / data deletion.
 | Variable | Reuse? | Purpose | Default / notes |
 |---|---|---|---|
 | `APP_URL` | Yes | `https://wix.thainexus.co.th` | |
-| `AUTH_CALLBACK` | Yes | OAuth redirect | Confirm path with Wix template |
+| `AUTH_CALLBACK` | Optional | Legacy Custom Auth redirect only | Unused after Easy OAuth |
 | `SUPABASE_URL` | Yes | **New** Wix project | |
 | `SUPABASE_SECRET_KEY` | Yes | Service role | Never ship to admin bundle |
 | `JWT_KEY` | Yes | Optional app session JWT | New secret |
@@ -459,8 +459,7 @@ Enable RLS; API uses service role only.
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | public | Liveness + Supabase probe |
-| GET/POST | `/api/auth` (+ OAuth routes) | Wix | Install / token exchange |
-| GET | `/api/session` | session | Bootstrap instance + `debugEnabled` |
+| GET | `/api/session` | signed instance | Bootstrap; mints Easy OAuth token |
 | GET/PUT | `/api/config` | session | Merchant config |
 | POST | `/api/shipping/check-connection` | session | Real Thai Nexus token test |
 | GET | `/api/shipping/services` | session | Courier toggles |
@@ -553,14 +552,13 @@ Least privilege; finalize against Wix permission names during impl:
 - Shipping rates SPI (extension)
 - Dashboard page access
 
-Store access + refresh tokens on `stores.instance_id`. Refresh before expiry.
+Store access tokens on `stores.instance_id`. Mint via Easy OAuth (`oauth2/token` client credentials) before expiry.
 
 ### 5.5 Embedded app URLs
 
 | Setting | Value |
 |---|---|
-| App URL | `https://wix.thainexus.co.th/` |
-| Redirect URL(s) | OAuth callback (confirm with template) |
+| OAuth | App ID + secret; Custom authentication off |
 | Dashboard Page URL | Admin SPA |
 | SPI deployment URI | Shipping Rates base |
 
@@ -710,7 +708,7 @@ Allowed for outer Dashboard iframe chrome if required by Wix. **Do not** replace
 
 ### Wix app setup
 - [ ] App created; final display name decided
-- [ ] OAuth App URL + Redirect URL
+- [ ] OAuth: Easy OAuth (Custom authentication off)
 - [ ] Dashboard Page extension
 - [ ] eCom Shipping Rates SPI (`deploymentUri`)
 - [ ] Webhooks: lifecycle + orders (+ privacy if required)

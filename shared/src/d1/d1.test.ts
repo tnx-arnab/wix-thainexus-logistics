@@ -11,7 +11,7 @@ import {
     setStoreUser,
     updateStoreTokens,
 } from './wixStore.js';
-import { deleteConfig, getConfig, getApiToken, saveConfig, toPublic } from '../thaiNexus/store.js';
+import { deleteConfig, getConfig, getApiToken, saveConfig, toPublic, copyConfigIfMissing } from '../thaiNexus/store.js';
 import { getProductFlags, resolveProductFlagMap, setProductFlags } from './productFlags.js';
 import {
     getProductPhysicalOverride,
@@ -155,6 +155,27 @@ test('config: save JSON and keep token when omitted', async () => {
     await saveConfig('inst-a', { shipper: { ...shipper, name: 'B' } });
     assert.equal(await getApiToken('inst-a'), 'secret-token');
     assert.equal((await getConfig('inst-a'))?.shipper.name, 'B');
+});
+
+test('config: copyConfigIfMissing copies once and skips existing dest', async () => {
+    setupDb();
+    const shipper = {
+        name: 'Origin',
+        phone: '1',
+        street: 's',
+        city: 'Bangkok',
+        state: 'BKK',
+        postalCode: '10110',
+        country: 'TH',
+    };
+    await saveConfig('inst-origin', { apiToken: 'secret-token', shipper });
+    assert.equal(await copyConfigIfMissing('inst-origin', 'inst-clone'), true);
+    assert.equal(await getApiToken('inst-clone'), 'secret-token');
+    assert.equal((await getConfig('inst-clone'))?.shipper.name, 'Origin');
+    await saveConfig('inst-clone', { shipper: { ...shipper, name: 'Clone' } });
+    assert.equal(await copyConfigIfMissing('inst-origin', 'inst-clone'), false);
+    assert.equal((await getConfig('inst-clone'))?.shipper.name, 'Clone');
+    assert.equal(await copyConfigIfMissing('inst-origin', 'inst-origin'), false);
 });
 
 test('product flags: defaults, round-trip, keep physical_override', async () => {

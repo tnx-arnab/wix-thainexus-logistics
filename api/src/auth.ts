@@ -11,6 +11,7 @@ import {
     resolveInstanceId,
     setStore,
     setStoreUser,
+    copyConfigIfMissing,
 } from '@thai-nexus/shared';
 import { cookieValue, BOOTSTRAP_COOKIE } from './httpSecurity.js';
 import { dashboardIdentityFromQuery } from './wix/instanceParam.js';
@@ -132,6 +133,7 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
     const store = await getStore(instanceId);
     const accessToken = await getValidAccessToken(instanceId);
     if (!accessToken) return null;
+    const linked = store || (await getStore(instanceId));
 
     const userId = String(user.id);
     if (hasUserId(user)) {
@@ -150,11 +152,24 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
         accessToken,
         instanceId,
         user,
-        siteId: store?.site_id || undefined,
+        siteId: linked?.site_id || undefined,
     };
 }
 
-/** OAuth install - persist Wix access + refresh tokens. */
+/** Mint Easy OAuth token, upsert stores, copy merchant config from a cloned origin site. */
+export async function provisionEasyOAuthInstance(
+    instanceId: string,
+    originInstanceId?: string
+): Promise<string | null> {
+    const accessToken = await getValidAccessToken(instanceId);
+    if (!accessToken) return null;
+    if (originInstanceId) {
+        await copyConfigIfMissing(originInstanceId, instanceId);
+    }
+    return accessToken;
+}
+
+/** Persist Wix access tokens after Easy OAuth mint or legacy custom-auth handshake. */
 export async function persistOAuthSession(
     raw: Partial<SessionProps> & Record<string, unknown>
 ) {

@@ -10,7 +10,7 @@ API is Wrangler on port **8787** (D1 local). Vite on 5173 proxies `/api` there.
 cloudflared tunnel --url http://localhost:8787
 ```
 
-Point Wix App URL, Redirect, Dashboard, SPI `deploymentUri`, and webhooks at that tunnel (same paths as production).
+Point Wix Dashboard iframe, SPI `deploymentUri`, and webhooks at that tunnel (same paths as production). Custom authentication (Legacy) stays off.
 
 ## Install on a test site
 

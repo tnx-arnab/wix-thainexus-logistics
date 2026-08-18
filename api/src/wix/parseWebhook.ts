@@ -87,25 +87,23 @@ export function parseWixWebhookRequest(
         !Buffer.isBuffer(raw)
     ) {
         const body = raw as Record<string, unknown>;
-        if (body.slug || body.actionEvent) {
-            const instanceId =
-                body.instanceId != null
-                    ? String(body.instanceId)
-                    : String(
-                          (body.metadata as Record<string, unknown> | undefined)?.instanceId ||
-                              ''
-                      );
-            if (instanceId) {
-                return {
-                    ok: true,
-                    parsed: {
-                        eventBody: body,
-                        instanceId,
-                        eventType: body.eventType ? String(body.eventType) : undefined,
-                        eventId: body.id ? String(body.id) : undefined,
-                    },
-                };
-            }
+        const instanceId =
+            body.instanceId != null
+                ? String(body.instanceId)
+                : String(
+                      (body.metadata as Record<string, unknown> | undefined)?.instanceId ||
+                          ''
+                  );
+        if (instanceId) {
+            return {
+                ok: true,
+                parsed: {
+                    eventBody: body,
+                    instanceId,
+                    eventType: body.eventType ? String(body.eventType) : undefined,
+                    eventId: body.id ? String(body.id) : undefined,
+                },
+            };
         }
     }
 
