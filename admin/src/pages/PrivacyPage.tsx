@@ -1,4 +1,6 @@
 import { Shield } from 'lucide-react';
+import ExtLink from '../components/ExtLink';
+import { clientApp, privacyPolicy, termsOfService } from '../lib/siteLinks';
 
 export default function PrivacyPage() {
     return (
@@ -11,14 +13,9 @@ export default function PrivacyPage() {
                 <p>
                     This app sends cart weights, dimensions, destination address, and product
                     document flags to Thai Nexus (
-                    <a
-                        href="https://app.thainexus.co.th/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary font-medium hover:underline"
-                    >
+                    <ExtLink href={clientApp} className="text-primary font-medium hover:underline">
                         app.thainexus.co.th
-                    </a>
+                    </ExtLink>
                     ) to calculate shipping rates at checkout.
                 </p>
                 <p>
@@ -37,6 +34,16 @@ export default function PrivacyPage() {
                     installation, catalog access (product search), and Shipping Rates SPI.
                     Uninstall removes OAuth tokens but keeps merchant config for reinstall.
                     Privacy / redact requests wipe all data for that instance when required.
+                </p>
+                <p>
+                    Company policy:{' '}
+                    <ExtLink href={privacyPolicy} className="text-primary font-medium hover:underline">
+                        Privacy policy
+                    </ExtLink>
+                    {' · '}
+                    <ExtLink href={termsOfService} className="text-primary font-medium hover:underline">
+                        Terms of service
+                    </ExtLink>
                 </p>
             </div>
         </div>
