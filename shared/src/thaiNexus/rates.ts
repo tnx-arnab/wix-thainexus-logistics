@@ -1,3 +1,4 @@
+import { applyCheckoutRateMultiplier } from '../checkoutRate.js';
 import { calculateTotalCommission } from '../commission.js';
 import { convertFromThb } from '../currency.js';
 import { appendDebugLog, isDebugEnabled } from '../d1/debugLog.js';
@@ -285,7 +286,7 @@ export async function calculateRates(
         const serviceLevel = classifyServiceLevel(displayName, v.days);
         const courierSlug = normalizeServiceId(courierKey);
 
-        let costThb = v.thb + commissionThb;
+        let costThb = applyCheckoutRateMultiplier(v.thb) + commissionThb;
         costThb = roundMoney(costThb);
 
         let amount: number;
