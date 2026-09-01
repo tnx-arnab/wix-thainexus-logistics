@@ -41,7 +41,7 @@ test('rateResponseToWix assigns unique codes per courier and human deliveryTime'
     assert.equal(flex?.title, 'Thai Nexus Express Flex DAP');
 });
 
-test('rateResponseToWix passes through marked-up checkout prices as strings', () => {
+test('rateResponseToWix passes through checkout prices as strings', () => {
     const response: BcRateResponse = {
         quote_id: 'q1',
         messages: [],
@@ -53,13 +53,13 @@ test('rateResponseToWix passes through marked-up checkout prices as strings', ()
                         code: 'prime_ddp',
                         rate_id: 'tn_7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4_prime_ddp',
                         display_name: 'Prime DDP',
-                        cost: { currency: 'THB', amount: 125 },
+                        cost: { currency: 'THB', amount: 100 },
                     },
                     {
                         code: 'flex_dap',
                         rate_id: 'tn_7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4_flex_dap',
                         display_name: 'Flex DAP',
-                        cost: { currency: 'THB', amount: 12.51 },
+                        cost: { currency: 'THB', amount: 10.01 },
                     },
                 ],
             },
@@ -69,7 +69,7 @@ test('rateResponseToWix passes through marked-up checkout prices as strings', ()
     const { shippingRates } = rateResponseToWix(response, 'THB');
     const prime = shippingRates.find((r) => r.code === 'prime_ddp');
     const flex = shippingRates.find((r) => r.code === 'flex_dap');
-    assert.equal(prime?.cost.price, '125.00');
+    assert.equal(prime?.cost.price, '100.00');
     assert.equal(prime?.cost.currency, 'THB');
-    assert.equal(flex?.cost.price, '12.51');
+    assert.equal(flex?.cost.price, '10.01');
 });

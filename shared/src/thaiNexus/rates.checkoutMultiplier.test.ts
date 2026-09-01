@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { applyCheckoutRateMultiplier } from '../checkoutRate.js';
 import { bindWorkerDb, clearWorkerDb } from '../d1/client.js';
 import { createMigratedMemoryD1 } from '../d1/memoryD1.js';
 import { saveConfig } from './store.js';
@@ -95,7 +94,7 @@ function quoteAmount(response: Awaited<ReturnType<typeof calculateRates>>, couri
     return match?.cost?.amount ?? NaN;
 }
 
-describe('calculateRates checkout 1.25 multiplier', () => {
+describe('calculateRates checkout uses Thai Nexus API price', () => {
     const prevEnc = process.env.ENCRYPTION_KEY;
     const prevDebug = process.env.DEBUG_MODE;
     const prevNode = process.env.NODE_ENV;
@@ -123,7 +122,7 @@ describe('calculateRates checkout 1.25 multiplier', () => {
         else process.env.NODE_ENV = prevNode;
     });
 
-    it('shows original Thai Nexus quote x 1.25 at checkout', async () => {
+    it('shows the original Thai Nexus quote at checkout with no 1.25 markup', async () => {
         await withMockedApiQuote(
             [
                 {
@@ -135,14 +134,13 @@ describe('calculateRates checkout 1.25 multiplier', () => {
             ],
             async () => {
                 const result = await calculateRates(rateRequest());
-                assert.equal(quoteAmount(result, 'prime_ddp'), 125);
-                assert.equal(applyCheckoutRateMultiplier(100), 125);
+                assert.equal(quoteAmount(result, 'prime_ddp'), 100);
                 assert.equal(result.carrier_quotes?.[0]?.quotes?.[0]?.cost.currency, 'THB');
             }
         );
     });
 
-    it('multiplies each courier quote independently', async () => {
+    it('passes through each courier quote independently', async () => {
         await withMockedApiQuote(
             [
                 {
@@ -160,13 +158,13 @@ describe('calculateRates checkout 1.25 multiplier', () => {
             ],
             async () => {
                 const result = await calculateRates(rateRequest());
-                assert.equal(quoteAmount(result, 'prime_ddp'), 125);
-                assert.equal(quoteAmount(result, 'flex_dap'), 100);
+                assert.equal(quoteAmount(result, 'prime_ddp'), 100);
+                assert.equal(quoteAmount(result, 'flex_dap'), 80);
             }
         );
     });
 
-    it('adds commission after the 1.25 markup, not before', async () => {
+    it('adds configured commission on top of the original API price', async () => {
         await saveConfig(INSTANCE_ID, {
             apiToken: 'tn-test-token',
             shipper,
@@ -195,25 +193,25 @@ describe('calculateRates checkout 1.25 multiplier', () => {
             ],
             async () => {
                 const result = await calculateRates(rateRequest());
-                // 100 * 1.25 + 10 = 135; not (100 + 10) * 1.25 = 137.5
-                assert.equal(quoteAmount(result, 'prime_ddp'), 135);
+                // 100 + 10 = 110; not 100 * 1.25 + 10 = 135
+                assert.equal(quoteAmount(result, 'prime_ddp'), 110);
             }
         );
     });
 
-    it('rounds the marked-up quote to 2 decimal places', async () => {
+    it('rounds the original quote to 2 decimal places', async () => {
         await withMockedApiQuote(
             [
                 {
                     courier_name: 'Prime DDP',
                     display_name: 'Prime DDP',
                     estimated_days: 5,
-                    final_price_thb: 10.01,
+                    final_price_thb: 10.015,
                 },
             ],
             async () => {
                 const result = await calculateRates(rateRequest());
-                assert.equal(quoteAmount(result, 'prime_ddp'), 12.51);
+                assert.equal(quoteAmount(result, 'prime_ddp'), 10.02);
             }
         );
     });

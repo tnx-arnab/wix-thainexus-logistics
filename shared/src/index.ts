@@ -6,7 +6,6 @@ export * from './d1/wixStore.js';
 export * from './thaiNexus/store.js';
 export * from './thaiNexus/client.js';
 export * from './validation.js';
-export * from './checkoutRate.js';
 export * from './commission.js';
 export * from './packing.js';
 export * from './currency.js';
