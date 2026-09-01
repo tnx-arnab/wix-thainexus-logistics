@@ -86,3 +86,53 @@ export function lineUnitPriceAmount(line: Record<string, unknown>): string {
     if (line.price != null) return String(line.price);
     return '0';
 }
+
+export function parseWixMoney(value: unknown): number {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'object') {
+        return parseWixMoney((value as Record<string, unknown>).amount);
+    }
+    const n = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+}
+
+/** Per-unit declared value for Thai Nexus shipment_items. */
+export function lineUnitDeclaredValue(line: Record<string, unknown>): number {
+    const qty = Math.max(1, Number(line.quantity) || 1);
+    const unit = parseWixMoney(line.price);
+    if (unit > 0) return Math.round(unit * 100) / 100;
+    const total = parseWixMoney(
+        line.totalPriceAfterDiscount ?? line.totalPrice ?? line.price
+    );
+    if (total > 0) return Math.round((total / qty) * 100) / 100;
+    return 0;
+}
+
+export function lineHsCode(line: Record<string, unknown>): string {
+    const phys = (line.physicalProperties as Record<string, unknown>) || {};
+    const catalog = (line.catalogReference as Record<string, unknown>) || {};
+    const options = (catalog.options as Record<string, unknown>) || {};
+    const raw =
+        line.hsCode ||
+        line.hs_code ||
+        phys.hsCode ||
+        phys.hs_code ||
+        options.hsCode ||
+        options.hs_code;
+    return raw != null ? String(raw).trim() : '';
+}
+
+export function lineOriginCountry(line: Record<string, unknown>, fallback = 'TH'): string {
+    const phys = (line.physicalProperties as Record<string, unknown>) || {};
+    const raw =
+        line.countryOfOrigin ||
+        line.country_of_origin ||
+        line.originCountry ||
+        phys.countryOfOrigin ||
+        phys.country_of_origin ||
+        phys.origin;
+    const code = String(raw || '').trim().toUpperCase();
+    if (!code) return fallback;
+    return normalizeCountryIso2(code) || fallback;
+}

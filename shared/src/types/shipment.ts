@@ -9,6 +9,15 @@ export interface ShipmentAddress {
     country?: string;
 }
 
+export interface ShipmentLineItem {
+    description: string;
+    quantity: number;
+    declared_value: number;
+    currency_code?: string;
+    hs_code?: string;
+    country_of_origin?: string;
+}
+
 export interface ShipmentSummary {
     request_number: string;
     status?: string;

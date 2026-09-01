@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOrderWebhookBody, extractShippingMethod } from './orderWebhook.js';
+import { normalizeOrderWebhookBody, extractShippingMethod, mapOrderLineItems } from './orderWebhook.js';
 
 test('order created (COD) allows NOT_PAID and unwraps createdEvent.entity', () => {
     const result = normalizeOrderWebhookBody({
@@ -110,4 +110,27 @@ test('extractShippingMethod reads selectedCarrierServiceOption', () => {
 
     assert.equal(method.code, 'flex_dap');
     assert.equal(method.title, 'Flex DAP');
+});
+
+test('mapOrderLineItems fills customs fields from Wix line items', () => {
+    const items = mapOrderLineItems({
+        order: {
+            lineItems: [
+                {
+                    productName: { original: 'Cotton tee' },
+                    quantity: 2,
+                    price: { amount: '350', currency: 'THB' },
+                    physicalProperties: { weight: 0.2, hs_code: '6109.10' },
+                    countryOfOrigin: 'TH',
+                },
+            ],
+        },
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].name, 'Cotton tee');
+    assert.equal(items[0].quantity, 2);
+    assert.equal(items[0].discounted_price?.amount, '350');
+    assert.equal(items[0].hs_code, '6109.10');
+    assert.equal(items[0].country_of_origin, 'TH');
 });

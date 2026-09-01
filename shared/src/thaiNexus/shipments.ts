@@ -7,7 +7,7 @@ import {
     ShipmentSummary,
 } from '../types/shipment.js';
 import { ShipperProfile } from '../types/thaiNexus.js';
-import { packItems } from '../packing.js';
+import { packItems, totalDeclaredValue } from '../packing.js';
 import { BcRateItem, ShippingBox } from '../types/thaiNexus.js';
 import {
     mergeShipmentSummaries,
@@ -230,6 +230,8 @@ export async function createShipmentsForOrder(
             // PackedBox contract: dims are the chosen box's inner dims and
             // weight includes the empty box - matching the parcel the courier
             // collects, and matching what the checkout rate was quoted on.
+            const shipmentItems = box.shipmentItems || [];
+            const declaredTotal = totalDeclaredValue(shipmentItems);
             const response = await shipmentCrud(token, 'create', {
                 data: {
                     shipper_address: shipperAddress,
@@ -246,6 +248,9 @@ export async function createShipmentsForOrder(
                               service_type: serviceId,
                           }
                         : {}),
+                    shipment_items: shipmentItems,
+                    total_declared_value: declaredTotal,
+                    total_currency: shipmentItems[0]?.currency_code || 'THB',
                     shipment_description: `Wix Order #${input.orderId} - Box ${index + 1}/${packing.boxes.length} (${box.boxName})`,
                 },
             });

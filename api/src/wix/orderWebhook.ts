@@ -19,6 +19,13 @@ import {
 import { resolveProductPhysicalMap } from './productPhysical.js';
 import { pickMergedPhysical, spiLineCatalogKeys, spiLinePrimaryProductId } from './spiCatalog.js';
 import { getValidAccessToken } from './tokens.js';
+import {
+    lineDisplayName,
+    lineHsCode,
+    lineOriginCountry,
+    lineUnitDeclaredValue,
+    lineUnitPriceAmount,
+} from './wixShippingDestination.js';
 
 function orderFromPayload(payload: Record<string, unknown>): Record<string, unknown> {
     return (
@@ -210,7 +217,7 @@ export function extractShippingMethod(payload: Record<string, unknown>): {
     };
 }
 
-function mapOrderLineItems(payload: Record<string, unknown>): BcRateItem[] {
+export function mapOrderLineItems(payload: Record<string, unknown>): BcRateItem[] {
     const order =
         (payload.order as Record<string, unknown>) ||
         ((payload.data as Record<string, unknown>)?.order as Record<string, unknown>) ||
@@ -235,19 +242,29 @@ function mapOrderLineItems(payload: Record<string, unknown>): BcRateItem[] {
             (line.productId as string) || (line.id as string) || `line_${idx}`
         );
 
+        const qty = Number(line.quantity) || 1;
+        const unitValue = lineUnitDeclaredValue(line);
+        const currency = String(
+            (line.price as { currency?: string } | undefined)?.currency ||
+                (line.totalPrice as { currency?: string } | undefined)?.currency ||
+                'THB'
+        ).toUpperCase();
+
         return {
             product_id: String(productId),
             catalog_lookup_ids: catalogKeys.length ? catalogKeys : undefined,
-            name: String(line.productName || line.name || `Item ${idx + 1}`),
-            quantity: Number(line.quantity) || 1,
+            name: lineDisplayName(line) || `Item ${idx + 1}`,
+            quantity: qty,
             length: { units: 'cm', value: Number(phys.length || line.length) || 0 },
             width: { units: 'cm', value: Number(phys.width || line.width) || 0 },
             height: { units: 'cm', value: Number(phys.height || line.height) || 0 },
             weight: { units: 'kg', value: Number(phys.weight || line.weight) || 0 },
             discounted_price: {
-                currency: 'THB',
-                amount: String(line.price || line.totalPrice || '0'),
+                currency: currency || 'THB',
+                amount: String(unitValue || lineUnitPriceAmount(line) || '0'),
             },
+            hs_code: lineHsCode(line) || undefined,
+            country_of_origin: lineOriginCountry(line, 'TH'),
         };
     });
 }

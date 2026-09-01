@@ -18,6 +18,7 @@
  * not the bare items.
  */
 import { BcRateItem, ShippingBox } from './types/thaiNexus.js';
+import type { ShipmentLineItem } from './types/shipment.js';
 
 /** One physical unit to pack (a single quantity of a product), in cm/kg. */
 export interface PackUnit {
@@ -28,6 +29,10 @@ export interface PackUnit {
     name: string;
     productId?: string;
     isDocument: boolean;
+    declaredValue: number;
+    currency: string;
+    hsCode: string;
+    origin: string;
 }
 
 export type PackItemsOptions = {
@@ -82,6 +87,8 @@ export interface PackedBox {
     contents: { length: number; width: number; height: number };
     /** Item labels packed into this box, e.g. "Shoe box ×2". */
     items: string[];
+    /** Customs lines for Thai Nexus shipment_items. */
+    shipmentItems: ShipmentLineItem[];
 }
 
 const DEFAULT_BOX: ShippingBox = {
@@ -155,6 +162,52 @@ function itemLabels(packed: PackUnit[]): string[] {
     return [...counts.entries()].map(([name, qty]) => (qty > 1 ? `${name} ×${qty}` : name));
 }
 
+function unitDeclaredValue(item: BcRateItem): number {
+    const n = parseFloat(item.discounted_price?.amount || '0');
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+}
+
+function unitCurrency(item: BcRateItem): string {
+    return (item.discounted_price?.currency || 'THB').toUpperCase();
+}
+
+function unitOrigin(item: BcRateItem): string {
+    const raw = (item.country_of_origin || 'TH').trim().toUpperCase();
+    return raw || 'TH';
+}
+
+export function shipmentItemsFromUnits(packed: PackUnit[]): ShipmentLineItem[] {
+    const grouped = new Map<string, ShipmentLineItem>();
+    for (const u of packed) {
+        const description = u.name.trim() || 'Item';
+        const hs_code = u.hsCode.trim();
+        const country_of_origin = u.origin.trim() || 'TH';
+        const declared_value = u.declaredValue;
+        const currency_code = u.currency || 'THB';
+        const key = `${description}|${hs_code}|${country_of_origin}|${declared_value}|${currency_code}`;
+        const existing = grouped.get(key);
+        if (existing) {
+            existing.quantity += 1;
+            continue;
+        }
+        grouped.set(key, {
+            description,
+            quantity: 1,
+            declared_value,
+            currency_code,
+            ...(hs_code ? { hs_code } : {}),
+            country_of_origin,
+        });
+    }
+    return [...grouped.values()];
+}
+
+export function totalDeclaredValue(items: ShipmentLineItem[]): number {
+    return Math.round(
+        items.reduce((sum, item) => sum + item.declared_value * item.quantity, 0) * 100
+    ) / 100;
+}
+
 /** Dimensions sorted largest-first, so fit checks allow any rotation. */
 function sortedDims(l: number, w: number, h: number): [number, number, number] {
     const d = [l, w, h].sort((a, b) => b - a);
@@ -220,6 +273,7 @@ function buildPackedBox(box: ShippingBox, packed: PackUnit[]): PackedBox {
             height: round3(contents[2]),
         },
         items: itemLabels(packed),
+        shipmentItems: shipmentItemsFromUnits(packed),
     };
 }
 
@@ -229,8 +283,24 @@ function buildRetailPackedBox(
     h: number,
     kg: number,
     name: string,
-    isDocument: boolean
+    isDocument: boolean,
+    declaredValue: number,
+    currency: string,
+    hsCode: string,
+    origin: string
 ): PackedBox {
+    const unit: PackUnit = {
+        l,
+        w,
+        h,
+        kg,
+        name,
+        isDocument,
+        declaredValue,
+        currency,
+        hsCode,
+        origin,
+    };
     return {
         length: round3(l),
         width: round3(w),
@@ -241,6 +311,7 @@ function buildRetailPackedBox(
         boxName: RETAIL_BOX_NAME,
         contents: { length: round3(l), width: round3(w), height: round3(h) },
         items: [name],
+        shipmentItems: shipmentItemsFromUnits([unit]),
     };
 }
 
@@ -291,9 +362,26 @@ export function packBoxedSingleItemCart(
         const qty = Math.max(1, Math.round(toNum(item.quantity) ?? 1));
         const name = item.name?.trim() || 'Item';
         const isDocument = Boolean(documentFlags[productId]);
+        const declaredValue = unitDeclaredValue(item);
+        const currency = unitCurrency(item);
+        const hsCode = (item.hs_code || '').trim();
+        const origin = unitOrigin(item);
 
         for (let i = 0; i < qty; i++) {
-            boxes.push(buildRetailPackedBox(l, w, h, kg, name, isDocument));
+            boxes.push(
+                buildRetailPackedBox(
+                    l,
+                    w,
+                    h,
+                    kg,
+                    name,
+                    isDocument,
+                    declaredValue,
+                    currency,
+                    hsCode,
+                    origin
+                )
+            );
         }
     }
 
@@ -350,9 +438,25 @@ export function packItems(
         const name = item.name?.trim() || `Item ${idx + 1}`;
         const productId = item.product_id ? String(item.product_id) : undefined;
         const isDocument = productId ? Boolean(documentFlags[productId]) : false;
+        const declaredValue = unitDeclaredValue(item);
+        const currency = unitCurrency(item);
+        const hsCode = (item.hs_code || '').trim();
+        const origin = unitOrigin(item);
 
         for (let i = 0; i < qty; i++) {
-            units.push({ l, w, h, kg, name, productId, isDocument });
+            units.push({
+                l,
+                w,
+                h,
+                kg,
+                name,
+                productId,
+                isDocument,
+                declaredValue,
+                currency,
+                hsCode,
+                origin,
+            });
         }
         if (!toNum(item.length?.value)) {
             errors.push(`Item ${idx + 1} missing dimensions - using defaults`);

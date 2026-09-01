@@ -22,6 +22,7 @@ function phoneCaseItem(overrides: Partial<BcRateItem> = {}): BcRateItem {
         width: { units: 'cm', value: 10 },
         height: { units: 'cm', value: 3 },
         weight: { units: 'kg', value: 0.15 },
+        discounted_price: { currency: 'THB', amount: '250' },
         ...overrides,
     };
 }
@@ -135,6 +136,38 @@ describe('packItems boxed integration', () => {
 
         assert.equal(packing.boxes[0].boxId, 'medium');
         assert.equal(packing.boxes[0].length, 40);
+    });
+
+    it('records shipment items with qty and declared value', () => {
+        const packing = packItems(
+            [
+                phoneCaseItem({ quantity: 2 }),
+                phoneCaseItem({
+                    product_id: '102',
+                    name: 'Shoe box',
+                    quantity: 1,
+                    discounted_price: { currency: 'THB', amount: '800' },
+                    hs_code: '6404.19',
+                    country_of_origin: 'TH',
+                    length: { units: 'cm', value: 30 },
+                    width: { units: 'cm', value: 20 },
+                    height: { units: 'cm', value: 12 },
+                    weight: { units: 'kg', value: 0.8 },
+                }),
+            ],
+            [merchantBox]
+        );
+
+        assert.equal(packing.boxes.length, 1);
+        const items = packing.boxes[0].shipmentItems;
+        const phone = items.find((i) => i.description === 'Phone case');
+        const shoe = items.find((i) => i.description === 'Shoe box');
+        assert.equal(phone?.quantity, 2);
+        assert.equal(phone?.declared_value, 250);
+        assert.equal(shoe?.quantity, 1);
+        assert.equal(shoe?.declared_value, 800);
+        assert.equal(shoe?.hs_code, '6404.19');
+        assert.equal(shoe?.country_of_origin, 'TH');
     });
 
     it('fails when an item does not fit any configured box', () => {

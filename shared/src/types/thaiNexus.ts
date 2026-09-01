@@ -95,6 +95,8 @@ export interface BcRateItem {
     height?: BcDimension;
     weight?: BcDimension;
     discounted_price?: { currency: string; amount: string };
+    hs_code?: string;
+    country_of_origin?: string;
 }
 
 export interface BcAddress {
