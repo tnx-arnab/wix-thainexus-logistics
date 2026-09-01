@@ -1,4 +1,4 @@
-import type { ProductSearchResult } from '@thai-nexus/shared';
+import { extractHsCodeFromRecord, type ProductSearchResult } from '@thai-nexus/shared';
 
 const STORES_CATALOG_APP = '215238eb-22a5-4c36-9e7b-e7c08025e04e';
 
@@ -10,6 +10,7 @@ export type WixProductPhysical = {
     lengthCm?: number;
     widthCm?: number;
     heightCm?: number;
+    hsCode?: string;
 };
 
 function wixAuthHeaders(accessToken: string, siteId?: string | null): Record<string, string> {
@@ -25,13 +26,19 @@ function wixAuthHeaders(accessToken: string, siteId?: string | null): Record<str
 async function wixGet(
     accessToken: string,
     path: string,
-    query?: Record<string, string>,
+    query?: Record<string, string | string[]>,
     siteId?: string | null
 ): Promise<unknown> {
     const url = new URL(`https://www.wixapis.com${path}`);
     if (query) {
         for (const [k, v] of Object.entries(query)) {
-            if (v) url.searchParams.set(k, v);
+            if (Array.isArray(v)) {
+                for (const item of v) {
+                    if (item) url.searchParams.append(k, item);
+                }
+            } else if (v) {
+                url.searchParams.set(k, v);
+            }
         }
     }
 
@@ -225,6 +232,7 @@ export function physicalFromWixProduct(
         sku: typeof product.sku === 'string' ? product.sku : undefined,
         weightKg,
         ...dims,
+        hsCode: extractHsCodeFromRecord(product) || undefined,
     };
 }
 
@@ -285,6 +293,7 @@ export function physicalFromV3Product(
         lengthCm: lengthCm ?? topDims.lengthCm,
         widthCm: widthCm ?? topDims.widthCm,
         heightCm: heightCm ?? topDims.heightCm,
+        hsCode: extractHsCodeFromRecord(product) || undefined,
     };
 }
 
@@ -398,7 +407,7 @@ async function fetchWixProductRecord(
         const data = (await wixGet(
             accessToken,
             `/stores/v3/products/${productId}`,
-            undefined,
+            { fields: ['INFO_SECTION', 'INFO_SECTION_PLAIN_DESCRIPTION'] },
             siteId
         )) as { product?: Record<string, unknown> };
         return data.product || null;

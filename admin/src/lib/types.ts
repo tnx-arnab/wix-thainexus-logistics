@@ -97,6 +97,7 @@ export interface ProductPhysicalResult {
     lengthCm?: number;
     widthCm?: number;
     heightCm?: number;
+    hsCode?: string;
     readyForRates: boolean;
     wixEditorHint?: string;
     saved?: boolean;

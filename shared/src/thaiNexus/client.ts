@@ -1,4 +1,5 @@
 import { ThaiNexusQuote, ThaiNexusShippingService } from '../types/thaiNexus.js';
+import { normalizeHsCode } from '../hsCode.js';
 
 function functionsBaseUrl(): string {
     const base =
@@ -130,6 +131,49 @@ export async function shipmentCrud(
     }
 
     return body;
+}
+
+export async function apiSuggestHsCode(
+    description: string,
+    destinationCountry?: string
+): Promise<string> {
+    const name = description.trim();
+    if (name.length < 2) return '';
+
+    const res = await fetchWithTimeout(
+        `${functionsBaseUrl()}suggestHsCode`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                description: name,
+                destination_country: destinationCountry || '',
+            }),
+        },
+        Math.min(UPSTREAM_TIMEOUT_MS, 8000),
+        'Thai Nexus HS suggest'
+    );
+
+    const text = await res.text();
+    let body: {
+        options?: Array<{ hs_code?: string; confidence?: string }>;
+    } = {};
+    if (text) {
+        try {
+            body = JSON.parse(text) as typeof body;
+        } catch {
+            return '';
+        }
+    }
+    if (!res.ok) return '';
+
+    const options = body.options || [];
+    const ranked = options.filter((o) => normalizeHsCode(o.hs_code));
+    const preferred =
+        ranked.find((o) => String(o.confidence || '').toLowerCase() === 'high') ||
+        ranked.find((o) => String(o.confidence || '').toLowerCase() === 'medium') ||
+        ranked[0];
+    return preferred ? normalizeHsCode(preferred.hs_code) : '';
 }
 
 export async function apiShippingServices(apiToken: string): Promise<{

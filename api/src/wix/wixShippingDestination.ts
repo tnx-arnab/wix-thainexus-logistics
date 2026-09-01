@@ -1,3 +1,5 @@
+import { extractHsCodeFromRecord } from '@thai-nexus/shared';
+
 /** Flat destination fields used by wixRequestToRateRequest. */
 export type WixShippingDestinationFlat = {
     country?: string;
@@ -110,17 +112,7 @@ export function lineUnitDeclaredValue(line: Record<string, unknown>): number {
 }
 
 export function lineHsCode(line: Record<string, unknown>): string {
-    const phys = (line.physicalProperties as Record<string, unknown>) || {};
-    const catalog = (line.catalogReference as Record<string, unknown>) || {};
-    const options = (catalog.options as Record<string, unknown>) || {};
-    const raw =
-        line.hsCode ||
-        line.hs_code ||
-        phys.hsCode ||
-        phys.hs_code ||
-        options.hsCode ||
-        options.hs_code;
-    return raw != null ? String(raw).trim() : '';
+    return extractHsCodeFromRecord(line);
 }
 
 export function lineOriginCountry(line: Record<string, unknown>, fallback = 'TH'): string {

@@ -21,7 +21,7 @@
     "cf:deploy": "npm run cf:build && wrangler deploy",
     "cf:secrets": "node scripts/cf-secrets-bulk.mjs",
     "test": "npm run test:unit && npm run test:schema && npm run test:worker",
-    "test:unit": "tsx --test shared/src/checkoutRate.test.ts shared/src/thaiNexus/rates.checkoutMultiplier.test.ts shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts shared/src/thaiNexus/shippingProvider.test.ts shared/src/crypto.test.ts shared/src/d1/d1.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts api/src/wix/instanceParam.test.ts api/src/wix/tokens.test.ts api/src/wix/oauth.test.ts api/src/health.test.ts",
+    "test:unit": "tsx --test shared/src/checkoutRate.test.ts shared/src/thaiNexus/rates.checkoutMultiplier.test.ts shared/src/packing.test.ts shared/src/rateEligibility.test.ts shared/src/boxedCustomField.test.ts shared/src/hsCode.test.ts shared/src/thaiNexus/shipmentNormalize.test.ts shared/src/thaiNexus/shippingProvider.test.ts shared/src/crypto.test.ts shared/src/d1/d1.test.ts api/src/wix/wixShippingRatesAdapter.test.ts api/src/wix/parseWebhook.test.ts api/src/wix/wixShippingDestination.test.ts api/src/wix/orderWebhook.test.ts api/src/wix/instanceParam.test.ts api/src/wix/tokens.test.ts api/src/wix/oauth.test.ts api/src/health.test.ts",
     "test:schema": "node scripts/test-d1-schema.mjs",
     "test:worker": "node scripts/test-worker-local.mjs",
     "test:prod": "node scripts/test-prod-smoke.mjs",

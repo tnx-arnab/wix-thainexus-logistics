@@ -19,6 +19,7 @@
  */
 import { BcRateItem, ShippingBox } from './types/thaiNexus.js';
 import type { ShipmentLineItem } from './types/shipment.js';
+import { normalizeHsCode } from './hsCode.js';
 
 /** One physical unit to pack (a single quantity of a product), in cm/kg. */
 export interface PackUnit {
@@ -180,7 +181,7 @@ export function shipmentItemsFromUnits(packed: PackUnit[]): ShipmentLineItem[] {
     const grouped = new Map<string, ShipmentLineItem>();
     for (const u of packed) {
         const description = u.name.trim() || 'Item';
-        const hs_code = u.hsCode.trim();
+        const hs_code = normalizeHsCode(u.hsCode);
         const country_of_origin = u.origin.trim() || 'TH';
         const declared_value = u.declaredValue;
         const currency_code = u.currency || 'THB';
@@ -364,7 +365,7 @@ export function packBoxedSingleItemCart(
         const isDocument = Boolean(documentFlags[productId]);
         const declaredValue = unitDeclaredValue(item);
         const currency = unitCurrency(item);
-        const hsCode = (item.hs_code || '').trim();
+        const hsCode = normalizeHsCode(item.hs_code);
         const origin = unitOrigin(item);
 
         for (let i = 0; i < qty; i++) {
@@ -440,7 +441,7 @@ export function packItems(
         const isDocument = productId ? Boolean(documentFlags[productId]) : false;
         const declaredValue = unitDeclaredValue(item);
         const currency = unitCurrency(item);
-        const hsCode = (item.hs_code || '').trim();
+        const hsCode = normalizeHsCode(item.hs_code);
         const origin = unitOrigin(item);
 
         for (let i = 0; i < qty; i++) {

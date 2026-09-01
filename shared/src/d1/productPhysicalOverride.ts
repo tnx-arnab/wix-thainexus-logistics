@@ -1,11 +1,13 @@
 import { getProductFlags, type ProductFlags } from './productFlags.js';
 import { all, first, parseJson, run, toJson } from './client.js';
+import { normalizeHsCode } from '../hsCode.js';
 
 export type ProductPhysicalOverride = {
     weightKg?: number;
     lengthCm?: number;
     widthCm?: number;
     heightCm?: number;
+    hsCode?: string;
 };
 
 export type MergedProductPhysical = {
@@ -16,6 +18,7 @@ export type MergedProductPhysical = {
     lengthCm?: number;
     widthCm?: number;
     heightCm?: number;
+    hsCode?: string;
     fromOverride?: boolean;
 };
 
@@ -26,6 +29,7 @@ export function mergeProductPhysical(
     const base = wix || { productId: '' };
     if (!override) return base;
 
+    const hsCode = override.hsCode || base.hsCode;
     const merged: MergedProductPhysical = {
         ...base,
         productId: base.productId || wix?.productId || '',
@@ -33,13 +37,15 @@ export function mergeProductPhysical(
         lengthCm: override.lengthCm ?? base.lengthCm,
         widthCm: override.widthCm ?? base.widthCm,
         heightCm: override.heightCm ?? base.heightCm,
+        ...(hsCode ? { hsCode } : {}),
     };
 
     if (
         override.weightKg != null ||
         override.lengthCm != null ||
         override.widthCm != null ||
-        override.heightCm != null
+        override.heightCm != null ||
+        override.hsCode
     ) {
         merged.fromOverride = true;
     }
@@ -62,10 +68,11 @@ function parseOverride(raw: unknown): ProductPhysicalOverride | null {
     const lengthCm = typeof o.lengthCm === 'number' ? o.lengthCm : undefined;
     const widthCm = typeof o.widthCm === 'number' ? o.widthCm : undefined;
     const heightCm = typeof o.heightCm === 'number' ? o.heightCm : undefined;
-    if (weightKg == null && lengthCm == null && widthCm == null && heightCm == null) {
+    const hsCode = normalizeHsCode(o.hsCode ?? o.hs_code);
+    if (weightKg == null && lengthCm == null && widthCm == null && heightCm == null && !hsCode) {
         return null;
     }
-    return { weightKg, lengthCm, widthCm, heightCm };
+    return { weightKg, lengthCm, widthCm, heightCm, ...(hsCode ? { hsCode } : {}) };
 }
 
 export async function getProductPhysicalOverride(

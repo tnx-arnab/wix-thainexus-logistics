@@ -166,7 +166,7 @@ describe('packItems boxed integration', () => {
         assert.equal(phone?.declared_value, 250);
         assert.equal(shoe?.quantity, 1);
         assert.equal(shoe?.declared_value, 800);
-        assert.equal(shoe?.hs_code, '6404.19');
+        assert.equal(shoe?.hs_code, '640419');
         assert.equal(shoe?.country_of_origin, 'TH');
     });
 

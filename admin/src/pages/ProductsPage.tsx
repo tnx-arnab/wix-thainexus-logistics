@@ -11,6 +11,7 @@ export default function ProductsPage() {
     const [widthCm, setWidthCm] = useState('');
     const [heightCm, setHeightCm] = useState('');
     const [weightLb, setWeightLb] = useState('');
+    const [hsCode, setHsCode] = useState('');
     const [loadingPhysical, setLoadingPhysical] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export default function ProductsPage() {
                     ? String(Math.round((data.weightKg / 0.45359237) * 100) / 100)
                     : '1'
             );
+            setHsCode(data.hsCode || '');
         } catch (err) {
             setPhysical(null);
             setError(err instanceof Error ? err.message : 'Could not load product');
@@ -60,8 +62,10 @@ export default function ProductsPage() {
                 widthCm: Number(widthCm),
                 heightCm: Number(heightCm),
                 weightLb: Number(weightLb),
+                hsCode,
             });
             setPhysical(data);
+            setHsCode(data.hsCode || '');
             setMessage(
                 data.readyForRates
                     ? !data.ratesPersisted && data.warning
@@ -158,6 +162,10 @@ export default function ProductsPage() {
                             <dt className="text-gray-500">Height (cm)</dt>
                             <dd className="font-medium">{physical.heightCm ?? '—'}</dd>
                         </div>
+                        <div>
+                            <dt className="text-gray-500">HS code</dt>
+                            <dd className="font-medium">{physical.hsCode || '—'}</dd>
+                        </div>
                     </dl>
                     {physical.fromOverride && (
                         <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
@@ -221,6 +229,17 @@ export default function ProductsPage() {
                                 />
                             </label>
                         </div>
+                        <label className="text-sm block max-w-xs">
+                            HS code
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5"
+                                value={hsCode}
+                                onChange={(ev) => setHsCode(ev.target.value)}
+                                placeholder="180690"
+                            />
+                        </label>
                         <button
                             type="submit"
                             disabled={saving}

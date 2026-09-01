@@ -46,7 +46,11 @@ test('lineUnitDeclaredValue prefers unit price over line total', () => {
 test('lineHsCode and lineOriginCountry read customs fields', () => {
     assert.equal(
         lineHsCode({ physicalProperties: { hs_code: '6109.10' } }),
-        '6109.10'
+        '610910'
+    );
+    assert.equal(
+        lineHsCode({ additionalInfoSections: [{ title: 'HS Code', description: '1806.90' }] }),
+        '180690'
     );
     assert.equal(lineOriginCountry({ countryOfOrigin: 'THA' }), 'TH');
     assert.equal(lineOriginCountry({}), 'TH');

@@ -5,6 +5,8 @@ import {
     setProductPhysicalOverride,
     readyForRatesFromPhysical,
     mergeProductPhysical,
+    getProductPhysicalOverride,
+    normalizeHsCode,
     type ProductFlags,
     type ProductPhysicalOverride,
 } from '@thai-nexus/shared';
@@ -112,11 +114,14 @@ router.put('/:id/physical', async (req, res) => {
                 ? weightLb * 0.45359237
                 : undefined;
 
+        const existing = await getProductPhysicalOverride(session.instanceId, id);
+        const hsCode = normalizeHsCode(req.body?.hsCode) || existing?.hsCode;
         const submittedOverride: ProductPhysicalOverride = {
             weightKg,
             lengthCm,
             widthCm,
             heightCm,
+            ...(hsCode ? { hsCode } : {}),
         };
 
         let savedOverride = false;

@@ -109,7 +109,7 @@ export async function fetchProductPhysical(productId: string): Promise<ProductPh
 
 export async function saveProductPhysical(
     productId: string,
-    dims: { lengthCm: number; widthCm: number; heightCm: number; weightLb?: number }
+    dims: { lengthCm: number; widthCm: number; heightCm: number; weightLb?: number; hsCode?: string }
 ): Promise<ProductPhysicalResult> {
     const { data } = await api.put<ProductPhysicalResult>(
         `/api/products/${encodeURIComponent(productId)}/physical`,

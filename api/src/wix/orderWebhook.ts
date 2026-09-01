@@ -472,6 +472,7 @@ export async function processOrderWebhook(
                                 ? item.height.value
                                 : p.heightCm || 0,
                     },
+                    hs_code: item.hs_code || p.hsCode || undefined,
                 };
             });
         }

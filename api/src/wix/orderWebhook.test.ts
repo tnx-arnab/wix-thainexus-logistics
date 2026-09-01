@@ -131,7 +131,7 @@ test('mapOrderLineItems fills customs fields from Wix line items', () => {
     assert.equal(items[0].name, 'Cotton tee');
     assert.equal(items[0].quantity, 2);
     assert.equal(items[0].discounted_price?.amount, '350');
-    assert.equal(items[0].hs_code, '6109.10');
+    assert.equal(items[0].hs_code, '610910');
     assert.equal(items[0].country_of_origin, 'TH');
 });
 

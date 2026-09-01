@@ -20,6 +20,7 @@ export * from './d1/debugLog.js';
 export * from './quoteCache.js';
 export * from './rateEligibility.js';
 export * from './boxedCustomField.js';
+export * from './hsCode.js';
 export { bindWorkerDb, clearWorkerDb, getDb, hasDb, probeDb } from './d1/client.js';
 export type { AppD1 } from './d1/client.js';
 export * from './d1/installLog.js';

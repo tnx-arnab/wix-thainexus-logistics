@@ -1,4 +1,4 @@
-import { shipmentCrud } from './client.js';
+import { shipmentCrud, apiSuggestHsCode } from './client.js';
 import { getApiToken } from './store.js';
 import { listStoredOrderShipments } from '../d1/orderShipments.js';
 import {
@@ -9,6 +9,7 @@ import {
 import { ShipperProfile } from '../types/thaiNexus.js';
 import { packItems, totalDeclaredValue } from '../packing.js';
 import { BcRateItem, ShippingBox } from '../types/thaiNexus.js';
+import { normalizeHsCode } from '../hsCode.js';
 import {
     mergeShipmentSummaries,
     normalizeShipmentDetail,
@@ -190,6 +191,40 @@ function cleanAddress(addr: {
     };
 }
 
+export async function fillMissingItemHsCodes(
+    items: BcRateItem[],
+    destinationCountry?: string,
+    suggest: (description: string, country?: string) => Promise<string> = apiSuggestHsCode
+): Promise<BcRateItem[]> {
+    const missingNames = [
+        ...new Set(
+            items
+                .filter((item) => !normalizeHsCode(item.hs_code))
+                .map((item) => (item.name || '').trim())
+                .filter((name) => name.length >= 2)
+        ),
+    ].slice(0, 8);
+
+    const suggested = new Map<string, string>();
+    await Promise.all(
+        missingNames.map(async (name) => {
+            try {
+                suggested.set(name, await suggest(name, destinationCountry));
+            } catch {
+                suggested.set(name, '');
+            }
+        })
+    );
+
+    return items.map((item) => {
+        const hs =
+            normalizeHsCode(item.hs_code) ||
+            suggested.get((item.name || '').trim()) ||
+            '';
+        return hs ? { ...item, hs_code: hs } : item;
+    });
+}
+
 /**
  * Create one Thai Nexus shipment per packed box for a Wix order.
  *
@@ -211,7 +246,8 @@ export async function createShipmentsForOrder(
         throw new Error('Thai Nexus API token is not configured');
     }
 
-    const packing = packItems(input.items, input.boxes, input.documentFlags || {}, {
+    const items = await fillMissingItemHsCodes(input.items, input.consignee.country);
+    const packing = packItems(items, input.boxes, input.documentFlags || {}, {
         boxedProductFlags: input.boxedProductFlags || {},
     });
     if (!packing.boxes.length) {
