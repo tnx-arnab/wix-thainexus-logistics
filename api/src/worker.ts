@@ -3,14 +3,77 @@ import { bufferRequestBody, PayloadTooLargeError } from './bufferRequestBody.js'
 import { createApp } from './app.js';
 import { bindWorkerExecutionContext, runWithWorkerContext } from './workerContext.js';
 import { bindWorkerDb, type AppD1 } from '@thai-nexus/shared';
-import { securityHeadersRecord } from './httpSecurity.js';
+import { BOOTSTRAP_COOKIE, securityHeadersRecord } from './httpSecurity.js';
 
-/** Public root is not a storefront - Wix Dashboard opens with a signed instance JWT. */
-function blank404(): Response {
-    return new Response(null, {
-        status: 404,
-        headers: { ...securityHeadersRecord(), 'Cache-Control': 'no-store' },
-    });
+const BLACK_404_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>404</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff}
+body{display:flex;align-items:center;justify-content:center;font-family:ui-sans-serif,system-ui,sans-serif}
+.wrap{text-align:center}
+h1{margin:0;font-size:clamp(4.5rem,18vw,8rem);font-weight:700;letter-spacing:.12em;line-height:1}
+p{margin:.85rem 0 0;color:#737373;font-size:.8rem;font-weight:500;letter-spacing:.28em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap"><h1>404</h1><p>Not found</p></div>
+</body>
+</html>`;
+
+type AssetBinding = { fetch: (request: Request) => Promise<Response> };
+
+function notFoundHeaders(extra?: Headers): Headers {
+    const headers = extra ? new Headers(extra) : new Headers();
+    for (const [key, value] of Object.entries(securityHeadersRecord())) {
+        headers.set(key, value);
+    }
+    headers.set('Cache-Control', 'no-store');
+    headers.set('Content-Type', 'text/html; charset=utf-8');
+    return headers;
+}
+
+/** Public host is not a storefront. Wix Dashboard opens `/` with a signed instance JWT. */
+async function black404(request: Request, env: { ASSETS: AssetBinding }): Promise<Response> {
+    const pathname = new URL(request.url).pathname;
+    if (pathname !== '/404.html') {
+        try {
+            const assetResponse = await env.ASSETS.fetch(new Request(new URL('/404.html', request.url)));
+            if (assetResponse.ok && assetResponse.body) {
+                return new Response(assetResponse.body, {
+                    status: 404,
+                    headers: notFoundHeaders(assetResponse.headers),
+                });
+            }
+        } catch {
+            // fall through to inlined page
+        }
+    }
+    return new Response(BLACK_404_HTML, { status: 404, headers: notFoundHeaders() });
+}
+
+function isDashboardHtmlRequest(url: URL, request: Request): boolean {
+    for (const key of ['instance', 'instanceId', 'instance_id', 'context', 'token', 'code']) {
+        if (url.searchParams.get(key)?.trim()) return true;
+    }
+    const cookie = request.headers.get('cookie') || '';
+    if (cookie.split(';').some((part) => part.trim().startsWith(`${BOOTSTRAP_COOKIE}=`))) {
+        return true;
+    }
+    if ((request.headers.get('sec-fetch-dest') || '').toLowerCase() === 'iframe') return true;
+    const referer = request.headers.get('referer') || '';
+    try {
+        const host = new URL(referer).hostname.toLowerCase();
+        if (host === 'wix.com' || host.endsWith('.wix.com')) return true;
+        if (host === 'wixstudio.com' || host.endsWith('.wixstudio.com')) return true;
+    } catch {
+        // ignore invalid referer
+    }
+    return false;
 }
 
 function payloadTooLargeResponse(): Response {
@@ -51,8 +114,6 @@ const app = createApp({ serveStatic: false });
 app.listen(API_PORT);
 
 const apiHandler = httpServerHandler({ port: API_PORT });
-
-type AssetBinding = { fetch: (request: Request) => Promise<Response> };
 
 let envHydrated = false;
 function hydrateProcessEnv(env: Record<string, unknown>): void {
@@ -114,7 +175,8 @@ export default {
             );
         }
 
-        if (isAppStaticAsset(pathname) || pathname === '/' || pathname === '') {
+        const isRoot = pathname === '/' || pathname === '';
+        if (isAppStaticAsset(pathname) || (isRoot && isDashboardHtmlRequest(url, request))) {
             const assetResponse = await env.ASSETS.fetch(request);
             const headers = new Headers(assetResponse.headers);
             for (const [key, value] of Object.entries(securityHeadersRecord())) {
@@ -128,6 +190,6 @@ export default {
         }
 
         console.info('[worker] 404', { pathname });
-        return blank404();
+        return black404(request, env);
     },
 };

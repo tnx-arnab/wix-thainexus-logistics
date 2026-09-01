@@ -16,6 +16,13 @@ mkdirSync('admin/dist', { recursive: true });
 if (!existsSync('admin/dist/index.html')) {
     writeFileSync('admin/dist/index.html', '<!doctype html><title>ci</title>', 'utf8');
 }
+if (!existsSync('admin/dist/404.html')) {
+    writeFileSync(
+        'admin/dist/404.html',
+        '<!doctype html><title>404</title><style>html,body{background:#000;color:#fff}</style><h1>404</h1>',
+        'utf8'
+    );
+}
 
 function wranglerSync(args) {
     return execFileSync('npx', ['wrangler', ...args], {
@@ -119,6 +126,20 @@ try {
     assert(setup.status === 200, `setup status ${setup.status}`);
     assert(typeof setup.body.ready === 'boolean', `setup ${JSON.stringify(setup.body)}`);
     assert(!('checks' in setup.body), 'setup must not expose secret inventory');
+
+    const home = await fetch(`${base}/`, { signal: AbortSignal.timeout(10000) });
+    const homeHtml = await home.text();
+    assert(home.status === 404, `public / status ${home.status}`);
+    assert(/background:\s*#000/i.test(homeHtml), 'public / 404 must be black');
+    assert(/404/.test(homeHtml), 'public / 404 must include 404');
+
+    const missing = await fetch(`${base}/no-such-page`, { signal: AbortSignal.timeout(10000) });
+    const missingHtml = await missing.text();
+    assert(missing.status === 404, `unknown path status ${missing.status}`);
+    assert(/404/.test(missingHtml), 'unknown path must include 404');
+
+    const dash = await fetch(`${base}/?instance=test`, { signal: AbortSignal.timeout(10000) });
+    assert(dash.status === 200, `dashboard / status ${dash.status}`);
 
     console.log('worker local ok', { health: health.body, setup: setup.body });
 } finally {
