@@ -19,6 +19,7 @@ import {
 import { resolveProductPhysicalMap } from './productPhysical.js';
 import { pickMergedPhysical, spiLineCatalogKeys, spiLinePrimaryProductId } from './spiCatalog.js';
 import { getValidAccessToken } from './tokens.js';
+import { getEcomOrder } from './ordersApi.js';
 import {
     lineDisplayName,
     lineHsCode,
@@ -269,11 +270,23 @@ export function mapOrderLineItems(payload: Record<string, unknown>): BcRateItem[
     });
 }
 
-function extractConsignee(payload: Record<string, unknown>) {
-    const order =
-        (payload.order as Record<string, unknown>) ||
-        ((payload.data as Record<string, unknown>)?.order as Record<string, unknown>) ||
-        payload;
+function firstEmail(...values: unknown[]): string {
+    for (const value of values) {
+        const s = String(value ?? '').trim();
+        if (s.includes('@') && s.includes('.')) return s;
+    }
+    return '';
+}
+
+function recordEmail(obj: unknown): string {
+    if (!obj || typeof obj !== 'object') return '';
+    const row = obj as Record<string, unknown>;
+    const contact = (row.contactDetails as Record<string, unknown>) || {};
+    return firstEmail(contact.email, row.email, row.emailAddress);
+}
+
+export function extractConsignee(payload: Record<string, unknown>) {
+    const order = orderFromPayload(payload);
     const shippingInfo = (order.shippingInfo as Record<string, unknown>) || {};
     const logistics = (shippingInfo.logistics as Record<string, unknown>) || {};
     const addr =
@@ -283,6 +296,9 @@ function extractConsignee(payload: Record<string, unknown>) {
         {};
     const address = (addr.address as Record<string, unknown>) || addr;
     const contact = (addr.contactDetails as Record<string, unknown>) || addr;
+    const buyer = (order.buyerInfo as Record<string, unknown>) || {};
+    const billing = (order.billingInfo as Record<string, unknown>) || {};
+    const recipient = (order.recipientInfo as Record<string, unknown>) || {};
 
     return {
         name: String(
@@ -292,12 +308,47 @@ function extractConsignee(payload: Record<string, unknown>) {
                 'Customer'
         ),
         phone: String(contact.phone || addr.phone || ''),
+        email: firstEmail(
+            contact.email,
+            addr.email,
+            recordEmail(logistics.shippingDestination),
+            recordEmail(recipient),
+            recordEmail(billing),
+            buyer.email,
+            order.email,
+            order.buyerEmail,
+            order.contactEmail
+        ),
         street: String(address.addressLine || address.street || ''),
         city: String(address.city || ''),
         state: String(address.subdivision || address.state || ''),
         postalCode: String(address.postalCode || ''),
         country: String(address.country || 'TH'),
     };
+}
+
+async function hydrateOrderFromWixApi(
+    instanceId: string,
+    payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+    if (extractConsignee(payload).email) return payload;
+    const orderId = extractOrderId(payload);
+    if (!orderId) return payload;
+
+    try {
+        const accessToken = await getValidAccessToken(instanceId);
+        if (!accessToken) return payload;
+        const full = await getEcomOrder(accessToken, orderId);
+        if (!full) return payload;
+        const existing = orderFromPayload(payload);
+        return { ...payload, order: { ...existing, ...full } };
+    } catch (err) {
+        console.warn(
+            '[order-webhook] order hydrate skipped',
+            err instanceof Error ? err.message : err
+        );
+        return payload;
+    }
 }
 
 /**
@@ -371,8 +422,9 @@ export async function processOrderWebhook(
     }
 
     const serviceId = resolveShipmentServiceId(method.code, method.title, services);
+    const orderPayload = await hydrateOrderFromWixApi(instanceId, payload);
 
-    let items = mapOrderLineItems(payload);
+    let items = mapOrderLineItems(orderPayload);
     const productIds = [
         ...new Set(items.flatMap((i) => rateItemCatalogIds(i)).filter(Boolean)),
     ];
@@ -451,7 +503,7 @@ export async function processOrderWebhook(
             instanceId,
             orderId,
             shipper: config.shipper,
-            consignee: extractConsignee(payload),
+            consignee: extractConsignee(orderPayload),
             items,
             boxes: config.boxes || [],
             documentFlags,

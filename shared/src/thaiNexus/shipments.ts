@@ -147,6 +147,7 @@ export interface CreateOrderShipmentsInput {
     consignee: {
         name: string;
         phone: string;
+        email?: string;
         street: string;
         city: string;
         state: string;
@@ -166,6 +167,7 @@ export interface CreateOrderShipmentsInput {
 function cleanAddress(addr: {
     name?: string;
     phone?: string;
+    email?: string;
     street?: string;
     city?: string;
     state?: string;
@@ -173,10 +175,13 @@ function cleanAddress(addr: {
     country?: string;
 }) {
     const s = (v?: string) => (v ?? '').toString().trim();
+    const email = s(addr.email);
+    const looksLikeEmail = email.includes('@') && email.includes('.');
 
     return {
         name: s(addr.name) || 'Customer',
         phone: s(addr.phone) || '0000000000',
+        ...(looksLikeEmail ? { email } : {}),
         address_line1: s(addr.street) || 'N/A',
         city: s(addr.city),
         state: s(addr.state),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOrderWebhookBody, extractShippingMethod, mapOrderLineItems } from './orderWebhook.js';
+import { normalizeOrderWebhookBody, extractShippingMethod, mapOrderLineItems, extractConsignee } from './orderWebhook.js';
 
 test('order created (COD) allows NOT_PAID and unwraps createdEvent.entity', () => {
     const result = normalizeOrderWebhookBody({
@@ -133,4 +133,29 @@ test('mapOrderLineItems fills customs fields from Wix line items', () => {
     assert.equal(items[0].discounted_price?.amount, '350');
     assert.equal(items[0].hs_code, '6109.10');
     assert.equal(items[0].country_of_origin, 'TH');
+});
+
+test('extractConsignee reads buyer and billing emails', () => {
+    const fromBuyer = extractConsignee({
+        order: {
+            buyerInfo: { email: 'buyer@example.com' },
+            shippingInfo: {
+                logistics: {
+                    shippingDestination: {
+                        contactDetails: { firstName: 'Arnab', lastName: 'Mondal', phone: '+65' },
+                        address: { addressLine: 'test', city: 'Singapore', country: 'SG' },
+                    },
+                },
+            },
+        },
+    });
+    assert.equal(fromBuyer.email, 'buyer@example.com');
+
+    const fromBilling = extractConsignee({
+        order: {
+            billingInfo: { contactDetails: { email: 'bill@shop.com', firstName: 'A' } },
+            shippingInfo: { logistics: { shippingDestination: { contactDetails: { phone: '1' } } } },
+        },
+    });
+    assert.equal(fromBilling.email, 'bill@shop.com');
 });

@@ -24,6 +24,7 @@ const DEFAULT_SHIPPER: ShipperProfile = {
     state: '',
     postalCode: '',
     country: 'TH',
+    email: '',
 };
 
 function migrateBox(raw: Record<string, unknown>, index: number): ShippingBox {

@@ -12,6 +12,7 @@ import {
     User,
     Wifi,
     Info,
+    Mail,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import ProductSearchSelect from '../components/ProductSearchSelect';
@@ -32,6 +33,7 @@ const emptyShipper = (): ShipperProfile => ({
     state: '',
     postalCode: '',
     country: 'TH',
+    email: '',
 });
 
 interface SettingsPageProps {
@@ -57,7 +59,7 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
 
     useEffect(() => {
         if (config?.shipper) {
-            setShipper({ ...config.shipper });
+            setShipper({ ...emptyShipper(), ...config.shipper });
         }
     }, [config?.updatedAt]);
 
@@ -540,6 +542,20 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                                     setShipper((s) => ({ ...s, phone: e.target.value }))
                                 }
                                 required
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                <Mail size={16} className="text-gray-400" />
+                                Email
+                            </label>
+                            <input
+                                type="email"
+                                className="tnxl-input"
+                                value={shipper.email || ''}
+                                onChange={(e) =>
+                                    setShipper((s) => ({ ...s, email: e.target.value }))
+                                }
                             />
                         </div>
                         <div className="md:col-span-2">

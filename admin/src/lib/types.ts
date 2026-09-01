@@ -6,6 +6,7 @@ export interface ShipperProfile {
     state: string;
     postalCode: string;
     country: string;
+    email?: string;
 }
 
 export type CommissionConditionType = 'subtotal_range' | 'specific_products';
