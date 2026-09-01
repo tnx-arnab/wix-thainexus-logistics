@@ -157,6 +157,8 @@ export interface CreateOrderShipmentsInput {
     boxes: ShippingBox[];
     documentFlags?: Record<string, boolean>;
     boxedProductFlags?: Record<string, boolean>;
+    /** Thai Nexus service id from checkout, e.g. prime_ddp. */
+    serviceId?: string;
     /** Resume after a partial webhook run - skip boxes already created. */
     startBoxIndex?: number;
 }
@@ -219,6 +221,7 @@ export async function createShipmentsForOrder(
     const errors: string[] = [...packing.errors];
 
     const startBoxIndex = Math.max(0, input.startBoxIndex ?? 0);
+    const serviceId = input.serviceId?.trim();
 
     for (let index = startBoxIndex; index < packing.boxes.length; index++) {
         const box = packing.boxes[index];
@@ -237,6 +240,12 @@ export async function createShipmentsForOrder(
                     height_cm: box.height,
                     is_document: box.isDocument,
                     shipment_type: 'parcel',
+                    ...(serviceId
+                        ? {
+                              service_id: serviceId,
+                              service_type: serviceId,
+                          }
+                        : {}),
                     shipment_description: `Wix Order #${input.orderId} - Box ${index + 1}/${packing.boxes.length} (${box.boxName})`,
                 },
             });

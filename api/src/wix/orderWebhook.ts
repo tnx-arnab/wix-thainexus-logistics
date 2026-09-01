@@ -10,9 +10,11 @@ import {
     normalizeServiceId,
     rateItemCatalogIds,
     resolveProductFlagMap,
+    resolveShipmentServiceId,
     saveOrderShipments,
     type BcRateItem,
     type OrderShipmentRecord,
+    type ThaiNexusShippingService,
 } from '@thai-nexus/shared';
 import { resolveProductPhysicalMap } from './productPhysical.js';
 import { pickMergedPhysical, spiLineCatalogKeys, spiLinePrimaryProductId } from './spiCatalog.js';
@@ -134,7 +136,8 @@ async function isThaiNexusShippingMethod(
     instanceId: string,
     methodTitle: string | undefined,
     methodCode: string | undefined,
-    carrierId?: string
+    carrierId?: string,
+    services?: ThaiNexusShippingService[]
 ): Promise<boolean> {
     const appId = process.env.WIX_APP_ID?.trim();
     if (appId && carrierId && carrierId === appId) return true;
@@ -144,20 +147,23 @@ async function isThaiNexusShippingMethod(
         return true;
     }
 
+    const listed = services ?? (await loadShippingServices(instanceId));
+    const names = listed.map((s) => normalizeServiceId(s.service_name || s.id || ''));
+    const candidates = [methodTitle, methodCode]
+        .filter(Boolean)
+        .map((v) => normalizeServiceId(String(v)));
+    return candidates.some((c) => names.some((n) => n && (c.includes(n) || n.includes(c))));
+}
+
+async function loadShippingServices(instanceId: string): Promise<ThaiNexusShippingService[]> {
     const token = await getApiToken(instanceId);
-    if (!token) return false;
+    if (!token) return [];
 
     try {
         const services = await apiShippingServices(token);
-        const names = (services.data || []).map((s) =>
-            normalizeServiceId(s.service_name || s.id || '')
-        );
-        const candidates = [methodTitle, methodCode]
-            .filter(Boolean)
-            .map((v) => normalizeServiceId(String(v)));
-        return candidates.some((c) => names.some((n) => n && (c.includes(n) || n.includes(c))));
+        return services.data || [];
     } catch {
-        return false;
+        return [];
     }
 }
 
@@ -173,15 +179,12 @@ function extractOrderId(payload: Record<string, unknown>): string | null {
     return id != null ? String(id) : null;
 }
 
-function extractShippingMethod(payload: Record<string, unknown>): {
+export function extractShippingMethod(payload: Record<string, unknown>): {
     title?: string;
     code?: string;
     carrierId?: string;
 } {
-    const order =
-        (payload.order as Record<string, unknown>) ||
-        ((payload.data as Record<string, unknown>)?.order as Record<string, unknown>) ||
-        payload;
+    const order = orderFromPayload(payload);
 
     const shippingInfo =
         (order.shippingInfo as Record<string, unknown>) ||
@@ -191,17 +194,19 @@ function extractShippingMethod(payload: Record<string, unknown>): {
         (shippingInfo.carrier as Record<string, unknown>) ||
         (shippingInfo.selectedCarrierServiceOption as Record<string, unknown>) ||
         {};
+    const logistics = (shippingInfo.logistics as Record<string, unknown>) || {};
+
+    const title = String(
+        carrier.title || carrier.name || shippingInfo.title || logistics.title || ''
+    ).trim();
+    const code = String(carrier.code || shippingInfo.code || logistics.code || '').trim();
 
     return {
-        title:
-            (carrier.title as string) ||
-            (carrier.name as string) ||
-            (shippingInfo.title as string),
-        code: (carrier.code as string) || (shippingInfo.code as string),
-        carrierId:
-            (shippingInfo.carrierId as string) ||
-            (carrier.carrierId as string) ||
-            (shippingInfo.carrier_id as string),
+        title: title || undefined,
+        code: code || undefined,
+        carrierId: String(
+            shippingInfo.carrierId || carrier.carrierId || shippingInfo.carrier_id || ''
+        ).trim() || undefined,
     };
 }
 
@@ -335,16 +340,20 @@ export async function processOrderWebhook(
     }
 
     const method = extractShippingMethod(payload);
+    const services = await loadShippingServices(instanceId);
     if (
         !(await isThaiNexusShippingMethod(
             instanceId,
             method.title,
             method.code,
-            method.carrierId
+            method.carrierId,
+            services
         ))
     ) {
         return { ok: false, reason: 'not-thai-nexus-method' };
     }
+
+    const serviceId = resolveShipmentServiceId(method.code, method.title, services);
 
     let items = mapOrderLineItems(payload);
     const productIds = [
@@ -430,6 +439,7 @@ export async function processOrderWebhook(
             boxes: config.boxes || [],
             documentFlags,
             boxedProductFlags: boxedFlags,
+            serviceId,
             startBoxIndex,
         });
 

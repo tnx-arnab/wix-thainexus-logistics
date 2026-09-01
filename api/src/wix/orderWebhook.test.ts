@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOrderWebhookBody } from './orderWebhook.js';
+import { normalizeOrderWebhookBody, extractShippingMethod } from './orderWebhook.js';
 
 test('order created (COD) allows NOT_PAID and unwraps createdEvent.entity', () => {
     const result = normalizeOrderWebhookBody({
@@ -81,4 +81,33 @@ test('order created skips fully refunded', () => {
         },
     });
     assert.equal(result.skipReason, 'blocked-fully_refunded');
+});
+
+test('extractShippingMethod reads SPI code and title from shippingInfo', () => {
+    const method = extractShippingMethod({
+        order: {
+            shippingInfo: {
+                carrierId: '253fa9c1-154a-4a3b-92e6-22de08ad44a2',
+                title: 'Thai Nexus Express Prime DDP',
+                code: 'prime_ddp',
+            },
+        },
+    });
+
+    assert.equal(method.code, 'prime_ddp');
+    assert.equal(method.title, 'Thai Nexus Express Prime DDP');
+    assert.equal(method.carrierId, '253fa9c1-154a-4a3b-92e6-22de08ad44a2');
+});
+
+test('extractShippingMethod reads selectedCarrierServiceOption', () => {
+    const method = extractShippingMethod({
+        order: {
+            shippingInfo: {
+                selectedCarrierServiceOption: { code: 'flex_dap', title: 'Flex DAP' },
+            },
+        },
+    });
+
+    assert.equal(method.code, 'flex_dap');
+    assert.equal(method.title, 'Flex DAP');
 });

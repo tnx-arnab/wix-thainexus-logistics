@@ -1,4 +1,4 @@
-import type { BcRateItem, BcRateRequest } from '../types/thaiNexus.js';
+import type { BcRateItem, BcRateRequest, ThaiNexusShippingService } from '../types/thaiNexus.js';
 import { testConnection } from './client.js';
 
 export const CARRIER_CODE = 'thainexus';
@@ -24,6 +24,90 @@ export function formatServiceDisplayName(serviceName: string): string {
     }
 
     return `${prefix} ${trimmed}`;
+}
+
+const SERVICE_BRAND_PREFIXES = [
+    'thai_nexus_express_',
+    'thai_nexus_',
+    'thainexus_express_',
+    'thainexus_',
+];
+
+/** Strip checkout brand prefixes so "Thai Nexus Express Prime DDP" → "prime_ddp". */
+export function stripServiceBrandPrefix(normalized: string): string {
+    let value = normalized.replace(/^_+/, '').replace(/_+$/, '');
+    for (const prefix of SERVICE_BRAND_PREFIXES) {
+        if (value === prefix.slice(0, -1)) return '';
+        if (value.startsWith(prefix)) {
+            value = value.slice(prefix.length).replace(/^_+/, '');
+            break;
+        }
+    }
+    return value;
+}
+
+function shipmentServiceCandidates(code?: string, title?: string): string[] {
+    const out: string[] = [];
+    const push = (raw?: string) => {
+        if (!raw?.trim()) return;
+        const n = normalizeServiceId(raw).replace(/[^a-z0-9_-]+/g, '_');
+        if (!n) return;
+        if (!out.includes(n)) out.push(n);
+        const stripped = stripServiceBrandPrefix(n);
+        if (stripped && stripped !== n && !out.includes(stripped)) out.push(stripped);
+    };
+    push(code);
+    push(title);
+    return out;
+}
+
+function looksLikeCourierServiceId(id: string): boolean {
+    return /_(ddp|dap)$/i.test(id);
+}
+
+/**
+ * Map a Wix checkout rate code/title onto a Thai Nexus service id (e.g. prime_ddp).
+ * Prefers an exact match against apiShippingServices when that list is available.
+ */
+export function resolveShipmentServiceId(
+    code?: string,
+    title?: string,
+    services: ThaiNexusShippingService[] = []
+): string | undefined {
+    const candidates = shipmentServiceCandidates(code, title);
+    if (!candidates.length) return undefined;
+
+    let best: { id: string; score: number } | undefined;
+    for (const service of services) {
+        const id = normalizeServiceId(service.id || '').replace(/[^a-z0-9_-]+/g, '_');
+        const name = normalizeServiceId(service.service_name || '').replace(
+            /[^a-z0-9_-]+/g,
+            '_'
+        );
+        const nameStripped = stripServiceBrandPrefix(name);
+        if (!id && !name) continue;
+
+        for (const candidate of candidates) {
+            let score = 0;
+            if (id && candidate === id) score = 100;
+            else if (name && candidate === name) score = 90;
+            else if (nameStripped && candidate === nameStripped) score = 90;
+            else if (id && id.startsWith(`${candidate}_`)) score = 80;
+            else if (nameStripped && nameStripped.includes(candidate) && candidate.length >= 4) {
+                score = 70;
+            }
+            if (score > (best?.score ?? 0)) {
+                best = { id: id || candidate, score };
+            }
+        }
+    }
+
+    if (best && best.score >= 70) return best.id;
+
+    const courierSlug = candidates.find(
+        (c) => looksLikeCourierServiceId(c) && c === stripServiceBrandPrefix(c)
+    );
+    return courierSlug || candidates.find(looksLikeCourierServiceId) || candidates[0] || undefined;
 }
 
 /** Registered BC carrier zone multiselect values - quote.code must match one of these at checkout. */
