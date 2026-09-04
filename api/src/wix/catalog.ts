@@ -492,10 +492,17 @@ async function updateWixProductPackageDimensionsV3(
         product: {
             id: productId,
             revision,
+            // V3 requires options and variantsInfo.variants to be sent together,
+            // since they are mutually dependent and must stay aligned.
+            ...(product.options != null ? { options: product.options } : {}),
             variantsInfo: {
                 variants: variants.map((variant) => ({
                     id: variant.id,
                     revision: variant.revision,
+                    // Wix V3 UpdateProduct overwrites the whole variants array and
+                    // requires price.actualPrice on each variant, so preserve it.
+                    ...(variant.price != null ? { price: variant.price } : {}),
+                    ...(variant.choices != null ? { choices: variant.choices } : {}),
                     physicalProperties: {
                         ...(variant.physicalProperties as Record<string, unknown> | undefined),
                         packageDimensions,
