@@ -16,6 +16,7 @@ import sessionRouter from './routes/session.js';
 import setupRouter from './routes/setup.js';
 import ordersRouter from './routes/orders.js';
 import webhooksRouter from './routes/webhooks.js';
+import billingRouter from './routes/billing.js';
 
 export type CreateAppOptions = {
     /** Serve admin/dist (local Node). Cloudflare uses the ASSETS binding instead. */
@@ -103,6 +104,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     app.use('/api/orders', ordersRouter);
     app.use('/api/debug', debugRouter);
     app.use('/api/shipping', shippingRouter);
+    app.use('/api/billing', billingRouter);
 
     if (serveStatic) {
         const __dirname = dirname(fileURLToPath(import.meta.url!));

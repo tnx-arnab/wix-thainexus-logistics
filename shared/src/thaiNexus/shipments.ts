@@ -293,6 +293,15 @@ export async function createShipmentsForOrder(
                     total_declared_value: declaredTotal,
                     total_currency: shipmentItems[0]?.currency_code || 'THB',
                     shipment_description: `Wix Order #${input.orderId} - Box ${index + 1}/${packing.boxes.length} (${box.boxName})`,
+                    platform: 'wix',
+                    platform_order_id: String(input.orderId),
+                    wix_instance_id: input.instanceId,
+                    wix_app_id: process.env.WIX_APP_ID || undefined,
+                    metadata: {
+                        source: 'wix_app',
+                        instance_id: input.instanceId,
+                        order_id: String(input.orderId),
+                    },
                 },
             });
 
