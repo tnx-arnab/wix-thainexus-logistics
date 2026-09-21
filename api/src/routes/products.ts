@@ -73,7 +73,7 @@ router.get('/:id/physical', async (req, res) => {
             ...physical,
             readyForRates: readyForRatesFromPhysical(physical),
             wixEditorHint:
-                'Color/size options do not add a weight field in Wix. Use Inventory and shipping → Shipping weight on the product, or enter weight (lb) below and Save.',
+                'Color/size options do not add a weight field in Wix. Use Inventory and shipping on the product, or enter weight (kg) below and Save.',
         });
     } catch (err) {
         return res.status(502).json({
@@ -91,13 +91,21 @@ router.put('/:id/physical', async (req, res) => {
     const lengthCm = Number(req.body?.lengthCm);
     const widthCm = Number(req.body?.widthCm);
     const heightCm = Number(req.body?.heightCm);
-    const weightLb = req.body?.weightLb != null ? Number(req.body.weightLb) : undefined;
+    const weightKgBody = req.body?.weightKg != null ? Number(req.body.weightKg) : undefined;
+    const weightLbBody = req.body?.weightLb != null ? Number(req.body.weightLb) : undefined;
     if (![lengthCm, widthCm, heightCm].every((n) => Number.isFinite(n) && n > 0)) {
         return res.status(400).json({ message: 'lengthCm, widthCm, heightCm must be positive numbers' });
     }
-    if (weightLb != null && (!Number.isFinite(weightLb) || weightLb <= 0)) {
-        return res.status(400).json({ message: 'weightLb must be a positive number when provided' });
+    const weightKg =
+        weightKgBody != null && Number.isFinite(weightKgBody) && weightKgBody > 0
+            ? weightKgBody
+            : weightLbBody != null && Number.isFinite(weightLbBody) && weightLbBody > 0
+              ? weightLbBody * 0.45359237
+              : undefined;
+    if (weightKg != null && (!Number.isFinite(weightKg) || weightKg <= 0)) {
+        return res.status(400).json({ message: 'weightKg must be a positive number when provided' });
     }
+    const weightLb = weightKg != null ? weightKg / 0.45359237 : undefined;
 
     const id = req.params.id;
     try {
@@ -109,19 +117,19 @@ router.put('/:id/physical', async (req, res) => {
             weightLb
         );
 
-        const weightKg =
-            weightLb != null && Number.isFinite(weightLb) && weightLb > 0
-                ? weightLb * 0.45359237
-                : undefined;
-
         const existing = await getProductPhysicalOverride(session.instanceId, id);
         const hsCode = normalizeHsCode(req.body?.hsCode) || existing?.hsCode;
+        const countryOfOrigin = String(req.body?.countryOfOrigin || existing?.countryOfOrigin || '')
+            .toUpperCase()
+            .replace(/[^A-Z]/g, '')
+            .slice(0, 2);
         const submittedOverride: ProductPhysicalOverride = {
             weightKg,
             lengthCm,
             widthCm,
             heightCm,
             ...(hsCode ? { hsCode } : {}),
+            ...(countryOfOrigin ? { countryOfOrigin } : {}),
         };
 
         let savedOverride = false;
@@ -203,9 +211,22 @@ router.put('/:id/flags', async (req, res) => {
         shippingEligible: body.shippingEligible !== false,
     };
 
-    try {
-        const saved = await setProductFlags(session.instanceId, req.params.id, flags);
-        return res.json(saved);
+        try {
+            const saved = await setProductFlags(session.instanceId, req.params.id, flags);
+            try {
+                const catalogItemIds = await listWixCatalogItemIdsForPhysical(
+                    session.accessToken,
+                    req.params.id,
+                    session.siteId
+                );
+                for (const catalogId of catalogItemIds) {
+                    if (String(catalogId) === String(req.params.id)) continue;
+                    await setProductFlags(session.instanceId, catalogId, flags);
+                }
+            } catch {
+                // Parent id is saved; variant fan-out is best-effort.
+            }
+            return res.json(saved);
     } catch (err) {
         return res.status(500).json({
             message: err instanceof Error ? err.message : 'Failed to save flags',

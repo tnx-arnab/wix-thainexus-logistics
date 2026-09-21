@@ -192,4 +192,14 @@ export default {
         console.info('[worker] 404', { pathname });
         return black404(request, env);
     },
+    async scheduled(
+        _controller: ScheduledController,
+        env: { ASSETS: AssetBinding; DB?: AppD1 } & Record<string, unknown>,
+        ctx: ExecutionContext
+    ): Promise<void> {
+        hydrateProcessEnv(env);
+        bindWorkerDb(env.DB);
+        const { runHourlyTrackingSync } = await import('./trackingCron.js');
+        await runHourlyTrackingSync();
+    },
 };

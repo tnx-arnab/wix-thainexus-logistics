@@ -8,21 +8,43 @@ import {
     Pencil,
     Phone,
     Save,
+    ToggleLeft,
+    ToggleRight,
     Truck,
     User,
     Wifi,
     Info,
-    Mail,
+    Zap,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import CountryMultiSelect from '../components/CountryMultiSelect';
 import ProductSearchSelect from '../components/ProductSearchSelect';
 import { fetchShippingServices, saveConfig, testConnection } from '../lib/api';
 import { BOXED_PRODUCT_FIELD_GUIDE } from '../lib/boxedProductField';
 import { validateShipperForm } from '../lib/validateShipperForm';
-import type { ShipperProfile, StoreConfigPublic, ThaiNexusShippingService } from '../lib/types';
+import type {
+    ProductWeightUnit,
+    ServiceCoverage,
+    ShipperProfile,
+    StoreConfigPublic,
+    ThaiNexusShippingService,
+} from '../lib/types';
 
 function normalizeServiceId(value: string): string {
     return value.trim().replace(/\s+/g, '_').toLowerCase();
+}
+
+function serviceKeys(service: { id: string; service_name: string }): string[] {
+    const seen = new Set<string>();
+    const keys: string[] = [];
+    for (const raw of [service.id, service.service_name]) {
+        const id = normalizeServiceId(String(raw || ''));
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        keys.push(id);
+    }
+
+    return keys;
 }
 
 const emptyShipper = (): ShipperProfile => ({
@@ -53,13 +75,20 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
     const [servicesLoading, setServicesLoading] = useState(false);
     const [servicesError, setServicesError] = useState<string | null>(null);
     const [disabledServiceIds, setDisabledServiceIds] = useState<string[]>([]);
-    const [shippingIneligibleProductIds, setShippingIneligibleProductIds] = useState<Array<string | number>>([]);
+    const [serviceCoverage, setServiceCoverage] = useState<Record<string, ServiceCoverage>>({});
+    const [productWeightUnit, setProductWeightUnit] = useState<ProductWeightUnit>('kg');
+    const [chargeActualWeightOnly, setChargeActualWeightOnly] = useState(false);
+    const [enableCheckoutRates, setEnableCheckoutRates] = useState(true);
+    const [enableAutoShipments, setEnableAutoShipments] = useState(true);
+    const [shippingIneligibleProductIds, setShippingIneligibleProductIds] = useState<
+        Array<string | number>
+    >([]);
 
     const tokenOnFile = Boolean(config?.hasApiToken) && !replacingToken && !apiToken;
 
     useEffect(() => {
         if (config?.shipper) {
-            setShipper({ ...emptyShipper(), ...config.shipper });
+            setShipper({ ...config.shipper });
         }
     }, [config?.updatedAt]);
 
@@ -71,7 +100,20 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
 
     useEffect(() => {
         setDisabledServiceIds(config?.disabledServiceIds || []);
-    }, [config?.updatedAt, config?.disabledServiceIds]);
+        setServiceCoverage(config?.serviceCoverage || {});
+        setProductWeightUnit(config?.productWeightUnit === 'g' ? 'g' : 'kg');
+        setChargeActualWeightOnly(Boolean(config?.chargeActualWeightOnly));
+        setEnableCheckoutRates(config?.enableCheckoutRates !== false);
+        setEnableAutoShipments(config?.enableAutoShipments !== false);
+    }, [
+        config?.updatedAt,
+        config?.disabledServiceIds,
+        config?.serviceCoverage,
+        config?.productWeightUnit,
+        config?.chargeActualWeightOnly,
+        config?.enableCheckoutRates,
+        config?.enableAutoShipments,
+    ]);
 
     useEffect(() => {
         setShippingIneligibleProductIds(config?.shippingIneligibleProductIds || []);
@@ -103,14 +145,17 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
         void loadServices();
     }, [loadServices, config?.updatedAt]);
 
-    const toggleService = (serviceId: string, enabled: boolean) => {
-        const id = normalizeServiceId(serviceId);
+    const toggleService = (service: ThaiNexusShippingService, enabled: boolean) => {
+        const ids = serviceKeys(service);
         setDisabledServiceIds((prev) => {
             if (enabled) {
-                return prev.filter((x) => x !== id);
+                return prev.filter((x) => !ids.includes(x));
             }
-            if (prev.includes(id)) return prev;
-            return [...prev, id];
+            const next = [...prev];
+            for (const id of ids) {
+                if (!next.includes(id)) next.push(id);
+            }
+            return next;
         });
     };
 
@@ -119,12 +164,193 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
             setDisabledServiceIds([]);
             return;
         }
-        setDisabledServiceIds(services.map((s) => normalizeServiceId(s.id)));
+        setDisabledServiceIds(services.flatMap((s) => serviceKeys(s)));
     };
 
-    const enabledCount = services.filter(
-        (s) => !disabledServiceIds.includes(normalizeServiceId(s.id))
-    ).length;
+    const coverageFor = (service: ThaiNexusShippingService): ServiceCoverage => {
+        for (const id of serviceKeys(service)) {
+            if (serviceCoverage[id]) return serviceCoverage[id];
+        }
+
+        return { worldwide: true, countries: [] };
+    };
+
+    const setCoverage = (service: ThaiNexusShippingService, next: ServiceCoverage) => {
+        setServiceCoverage((prev) => {
+            const merged = { ...prev };
+            for (const id of serviceKeys(service)) {
+                merged[id] = next;
+            }
+
+            return merged;
+        });
+    };
+
+    const enabledCount = services.filter((s) => {
+        const ids = serviceKeys(s);
+        return !ids.some((id) => disabledServiceIds.includes(id));
+    }).length;
+
+    const renderServiceRow = (service: ThaiNexusShippingService) => {
+        const id = normalizeServiceId(service.id);
+        const enabled = !serviceKeys(service).some((key) => disabledServiceIds.includes(key));
+        const coverage = coverageFor(service);
+        const isExclude = Boolean(coverage.excludeCountries);
+        const isRestOfWorld = Boolean(coverage.restOfWorld) && !isExclude;
+        const isWorldwide = coverage.worldwide && !isRestOfWorld && !isExclude;
+        const isSelected = !isWorldwide && !isRestOfWorld && !isExclude;
+
+        return (
+            <li key={service.id} className="px-4 py-3 hover:bg-gray-50">
+                <label className="flex items-center gap-4 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => toggleService(service, e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
+                    />
+                    {service.logo ? (
+                        <img
+                            src={service.logo}
+                            alt=""
+                            className="h-8 w-8 object-contain shrink-0"
+                        />
+                    ) : (
+                        <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                            <Truck size={16} className="text-primary" />
+                        </div>
+                    )}
+                    <span className="text-sm font-medium text-gray-800">
+                        {service.service_name}
+                    </span>
+                </label>
+                {enabled && (
+                    <div className="mt-3 ml-8 space-y-3">
+                        <div className="flex flex-wrap gap-4 text-sm">
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name={`coverage-${id}`}
+                                    checked={isWorldwide}
+                                    onChange={() =>
+                                        setCoverage(service, {
+                                            worldwide: true,
+                                            countries: [],
+                                        })
+                                    }
+                                />
+                                All Available
+                            </label>
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name={`coverage-${id}`}
+                                    checked={isSelected}
+                                    onChange={() =>
+                                        setCoverage(service, {
+                                            worldwide: false,
+                                            countries: coverage.countries,
+                                        })
+                                    }
+                                />
+                                Selected countries
+                            </label>
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name={`coverage-${id}`}
+                                    checked={isExclude}
+                                    onChange={() =>
+                                        setCoverage(service, {
+                                            worldwide: true,
+                                            excludeCountries: true,
+                                            countries: coverage.countries,
+                                        })
+                                    }
+                                />
+                                Exclude countries
+                            </label>
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name={`coverage-${id}`}
+                                    checked={isRestOfWorld}
+                                    onChange={() =>
+                                        setCoverage(service, {
+                                            worldwide: false,
+                                            restOfWorld: true,
+                                            countries: [],
+                                        })
+                                    }
+                                />
+                                Rest of world
+                            </label>
+                        </div>
+                        {isWorldwide && (
+                            <p className="text-xs text-gray-500">
+                                Offered for every destination this service can quote.
+                            </p>
+                        )}
+                        {isSelected && (
+                            <div className="space-y-2">
+                                <CountryMultiSelect
+                                    selected={coverage.countries}
+                                    onChange={(countries) =>
+                                        setCoverage(service, {
+                                            worldwide: false,
+                                            countries,
+                                        })
+                                    }
+                                />
+                                {!(coverage.countries || []).length && (
+                                    <p className="text-xs text-secondary">
+                                        Add at least one country or this service will not save.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                        {isExclude && (
+                            <div className="space-y-2">
+                                <p className="text-xs text-gray-500">
+                                    Offered for every destination this service can quote except the
+                                    countries listed below.
+                                </p>
+                                <CountryMultiSelect
+                                    selected={coverage.countries}
+                                    placeholder="Search countries to exclude"
+                                    onChange={(countries) =>
+                                        setCoverage(service, {
+                                            worldwide: true,
+                                            excludeCountries: true,
+                                            countries,
+                                        })
+                                    }
+                                />
+                                {!(coverage.countries || []).length && (
+                                    <p className="text-xs text-secondary">
+                                        Add at least one country to exclude or this service will
+                                        not save.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                        {isRestOfWorld && (
+                            <p className="text-xs text-gray-500">
+                                Shown only when no other enabled service is offered for the
+                                destination.
+                            </p>
+                        )}
+                    </div>
+                )}
+            </li>
+        );
+    };
+
+    const renderServiceList = (list: ThaiNexusShippingService[]) => (
+        <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+            {list.map(renderServiceRow)}
+        </ul>
+    );
 
     const handleTest = async () => {
         if (!apiToken.trim() && !config?.hasApiToken) {
@@ -170,6 +396,27 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
             return;
         }
 
+        const incompleteCoverage = services.filter((service) => {
+            const ids = serviceKeys(service);
+            if (ids.some((id) => disabledServiceIds.includes(id))) return false;
+            const coverage = coverageFor(service);
+            if (coverage.restOfWorld) return false;
+            if (coverage.excludeCountries) {
+                return !(coverage.countries || []).length;
+            }
+            return !coverage.worldwide && !(coverage.countries || []).length;
+        });
+        if (incompleteCoverage.length) {
+            const names = incompleteCoverage
+                .map((s) => s.service_name || s.id)
+                .join(', ');
+            setMessage({
+                type: 'error',
+                text: `Select at least one country for: ${names}.`,
+            });
+            return;
+        }
+
         setSaving(true);
         try {
             const payload: Record<string, unknown> = {
@@ -177,7 +424,13 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                 commissionRules: config?.commissionRules || [],
                 boxes: config?.boxes || [],
                 disabledServiceIds,
+                serviceCoverage,
+                productWeightUnit,
+                chargeActualWeightOnly,
+                enableCheckoutRates,
+                enableAutoShipments,
                 shippingIneligibleProductIds,
+                pricingMode: config?.pricingMode,
             };
             if (apiToken.trim()) {
                 payload.apiToken = apiToken.trim();
@@ -220,8 +473,64 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                 <strong>Save settings</strong>.
             </div>
 
+            <div className="tnxl-card">
+                <div className="bg-primary p-5 flex items-center gap-3">
+                    <Zap className="text-white w-6 h-6" />
+                    <h2 className="text-lg font-bold text-white">Automation</h2>
+                </div>
+                <div className="p-8 space-y-6">
+                    <div className="flex items-start justify-between gap-6 p-5 rounded-xl border border-gray-100 bg-gray-50/50">
+                        <div className="flex-1">
+                            <p className="font-semibold text-gray-800">Real-time checkout shipping rates</p>
+                            <p className="mt-2 text-sm text-gray-600">
+                                When enabled, live Thai Nexus rates are fetched at checkout. When disabled, no quote calls are made.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enableCheckoutRates}
+                            onClick={() => setEnableCheckoutRates((v) => !v)}
+                            className="shrink-0 text-primary"
+                        >
+                            {enableCheckoutRates ? (
+                                <ToggleRight size={40} />
+                            ) : (
+                                <ToggleLeft size={40} className="text-gray-300" />
+                            )}
+                        </button>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 p-5 rounded-xl border border-gray-100 bg-gray-50/50">
+                        <div className="flex-1">
+                            <p className="font-semibold text-gray-800">Automatic shipment creation</p>
+                            <p className="mt-2 text-sm text-gray-600">
+                                When enabled, Thai Nexus shipments are created when a qualifying BigCommerce order is placed.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enableAutoShipments}
+                            onClick={() => setEnableAutoShipments((v) => !v)}
+                            className="shrink-0 text-primary"
+                        >
+                            {enableAutoShipments ? (
+                                <ToggleRight size={40} />
+                            ) : (
+                                <ToggleLeft size={40} className="text-gray-300" />
+                            )}
+                        </button>
+                    </div>
+                    {!enableCheckoutRates && !enableAutoShipments && (
+                        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+                            Both features are off. The app will not quote at checkout or create shipments automatically.
+                        </p>
+                    )}
+                </div>
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="bg-secondary p-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="bg-primary p-5 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <Key className="text-white w-6 h-6" />
                         <h2 className="text-lg font-bold text-white">API Authentication</h2>
@@ -350,7 +659,87 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="bg-secondary p-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="bg-primary p-5 flex items-center gap-3">
+                    <Package className="text-white w-6 h-6" />
+                    <h2 className="text-lg font-bold text-white">Product weight and billing</h2>
+                </div>
+                <div className="p-8 space-y-6">
+                    <div>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">
+                            Product weight unit
+                        </p>
+                        <p className="text-sm text-gray-600 mb-3">
+                            How catalog product weights are read. Box inventory stays in kg. Thai
+                            Nexus quotes always use kg.
+                        </p>
+                        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setProductWeightUnit('kg')}
+                                className={`px-4 py-2 text-sm font-medium rounded-md ${
+                                    productWeightUnit === 'kg'
+                                        ? 'bg-white text-primary shadow-sm'
+                                        : 'text-gray-600'
+                                }`}
+                            >
+                                KG
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setProductWeightUnit('g')}
+                                className={`px-4 py-2 text-sm font-medium rounded-md ${
+                                    productWeightUnit === 'g'
+                                        ? 'bg-white text-primary shadow-sm'
+                                        : 'text-gray-600'
+                                }`}
+                            >
+                                Gram
+                            </button>
+                        </div>
+                    </div>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="mt-1 w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            checked={chargeActualWeightOnly}
+                            onChange={(e) => setChargeActualWeightOnly(e.target.checked)}
+                        />
+                        <span>
+                            <span className="block text-sm font-semibold text-gray-800">
+                                Charge actual product weight only
+                            </span>
+                            <span className="block text-sm text-gray-600 mt-1">
+                                Box packing is skipped. Quotes send filler dimensions so volumetric
+                                weight stays below product weight. Checkout is billed on actual
+                                product weight.
+                            </span>
+                        </span>
+                    </label>
+
+                    {chargeActualWeightOnly ? (
+                        <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                            <Info size={18} className="shrink-0 mt-0.5" />
+                            <p>
+                                Configure product weights in {productWeightUnit === 'g' ? 'grams' : 'kg'}.
+                                Filler parcel size is chosen so volumetric weight is always lower than
+                                actual weight. Box inventory is not used.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex gap-3 rounded-lg border border-primary/15 bg-[#eff6ff] px-4 py-3 text-sm text-gray-700">
+                            <Info size={18} className="text-primary shrink-0 mt-0.5" />
+                            <p>
+                                Checkout will warn shoppers that Thai Nexus rechecks weight and
+                                volumetric weight at our offices and charges whichever is higher.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-primary p-5 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <Truck className="text-white w-6 h-6" />
                         <h2 className="text-lg font-bold text-white">Shipping Services</h2>
@@ -389,12 +778,15 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                     ) : services.length === 0 ? (
                         <p className="text-sm text-gray-500">No shipping services available.</p>
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-5">
                             <p className="text-sm text-gray-600">
-                                Uncheck services you do not want to offer at checkout. All services
-                                are enabled by default.
+                                Uncheck a service to hide it at checkout.{' '}
+                                <strong>All Available</strong> uses every destination that service
+                                can quote. <strong>Rest of world</strong> is a fallback when no other
+                                enabled service is shown. Selected and exclude countries work as
+                                listed.
                             </p>
-                            <div className="flex flex-wrap gap-4 text-sm">
+                            <div className="flex flex-wrap gap-4 text-sm items-center">
                                 <button
                                     type="button"
                                     onClick={() => setAllServices(true)}
@@ -410,44 +802,7 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                                     Deselect all
                                 </button>
                             </div>
-                            <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
-                                {services.map((service) => {
-                                    const id = normalizeServiceId(service.id);
-                                    const enabled = !disabledServiceIds.includes(id);
-
-                                    return (
-                                        <li key={service.id}>
-                                            <label className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={enabled}
-                                                    onChange={(e) =>
-                                                        toggleService(service.id, e.target.checked)
-                                                    }
-                                                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
-                                                />
-                                                {service.logo ? (
-                                                    <img
-                                                        src={service.logo}
-                                                        alt=""
-                                                        className="h-8 w-8 object-contain shrink-0"
-                                                    />
-                                                ) : (
-                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                                                        <Truck
-                                                            size={16}
-                                                            className="text-primary"
-                                                        />
-                                                    </div>
-                                                )}
-                                                <span className="text-sm font-medium text-gray-800">
-                                                    {service.service_name}
-                                                </span>
-                                            </label>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
+                            {renderServiceList(services)}
                         </div>
                     )}
                 </div>
@@ -480,6 +835,7 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                 </div>
             </div>
 
+            {!chargeActualWeightOnly && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="bg-primary p-5 flex items-center gap-3 rounded-t-xl">
                     <Package className="text-white w-6 h-6" />
@@ -506,9 +862,10 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                     </div>
                 </div>
             </div>
+            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="bg-secondary p-5 flex items-center gap-3">
+                <div className="bg-primary p-5 flex items-center gap-3">
                     <MapPin className="text-white w-6 h-6" />
                     <h2 className="text-lg font-bold text-white">Store Origin Address (required)</h2>
                 </div>
@@ -542,20 +899,6 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                                     setShipper((s) => ({ ...s, phone: e.target.value }))
                                 }
                                 required
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                                <Mail size={16} className="text-gray-400" />
-                                Email
-                            </label>
-                            <input
-                                type="email"
-                                className="tnxl-input"
-                                value={shipper.email || ''}
-                                onChange={(e) =>
-                                    setShipper((s) => ({ ...s, email: e.target.value }))
-                                }
                             />
                         </div>
                         <div className="md:col-span-2">

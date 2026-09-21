@@ -406,6 +406,9 @@ export async function processOrderWebhook(
     if (!config) {
         return { ok: false, reason: 'store-not-ready' };
     }
+    if (config.enableAutoShipments === false) {
+        return { ok: false, reason: 'auto-shipments-off' };
+    }
 
     const method = extractShippingMethod(payload);
     const services = await loadShippingServices(instanceId);
@@ -473,6 +476,7 @@ export async function processOrderWebhook(
                                 : p.heightCm || 0,
                     },
                     hs_code: item.hs_code || p.hsCode || undefined,
+                    country_of_origin: item.country_of_origin || p.countryOfOrigin || 'TH',
                 };
             });
         }

@@ -17,9 +17,10 @@
  * courier and used for shipment creation, since the courier handles the box,
  * not the bare items.
  */
-import { BcRateItem, ShippingBox } from './types/thaiNexus.js';
+import { BcRateItem, ProductWeightUnit, ShippingBox } from './types/thaiNexus.js';
 import type { ShipmentLineItem } from './types/shipment.js';
 import { normalizeHsCode } from './hsCode.js';
+import { sanitizeProductWeightUnit } from './validation.js';
 
 /** One physical unit to pack (a single quantity of a product), in cm/kg. */
 export interface PackUnit {
@@ -39,27 +40,25 @@ export interface PackUnit {
 export type PackItemsOptions = {
     /** Per-product retail-box flag (`thai_nexus.is_boxed_product`). */
     boxedProductFlags?: Record<string, boolean>;
+    productWeightUnit?: ProductWeightUnit;
+    chargeActualWeightOnly?: boolean;
 };
 
 const RETAIL_BOX_ID = 'retail_box';
 const RETAIL_BOX_NAME = 'Retail box';
+const ACTUAL_WEIGHT_BOX_ID = 'actual_weight';
+const ACTUAL_WEIGHT_BOX_NAME = 'Actual weight';
+const ACTUAL_WEIGHT_MIN_DIM_CM = 1;
+const MIN_CHARGEABLE_WEIGHT_KG = 0.001;
+export const THAI_NEXUS_VOLUMETRIC_DIVISOR = 5000;
 
-/** True when the cart is a single product flagged as boxed (retail-dimension quoting). */
+/** True when every cart line is flagged boxed (retail-dimension quoting). */
 export function cartQualifiesForRetailBoxing(
     items: BcRateItem[],
     boxedProductFlags: Record<string, boolean>
 ): boolean {
     if (!items.length) return false;
-
-    const productIds = new Set<string>();
-    for (const item of items) {
-        const productId = item.product_id ? String(item.product_id) : '';
-        if (productId) productIds.add(productId);
-    }
-
-    if (productIds.size !== 1) return false;
-
-    return Boolean(boxedProductFlags[[...productIds][0]]);
+    return items.every((item) => flagForItem(item, boxedProductFlags));
 }
 
 /**
@@ -137,8 +136,61 @@ function toKg(dim?: { units?: string; value?: number | string }, fallback = 0.5)
     return value;
 }
 
+function catalogIds(item: BcRateItem): string[] {
+    const ids: string[] = [];
+    if (item.product_id) ids.push(String(item.product_id));
+    for (const id of item.catalog_lookup_ids || []) {
+        if (id) ids.push(String(id));
+    }
+    return ids;
+}
+
+function flagForItem(item: BcRateItem, flags: Record<string, boolean>): boolean {
+    return catalogIds(item).some((id) => Boolean(flags[id]));
+}
+
+/** Catalog product weight → kg. Merchant unit wins over catalog unit strings. */
+export function productWeightToKg(
+    dim?: { units?: string; value?: number | string },
+    productWeightUnit: ProductWeightUnit = 'kg',
+    fallback = 0.5
+): number {
+    const value = toNum(dim?.value);
+    if (!value) return fallback;
+    if (productWeightUnit === 'g') return value / 1000;
+
+    return toKg(dim, fallback);
+}
+
 function round3(n: number): number {
     return Math.round(n * 1000) / 1000;
+}
+
+function chargeableWeightKg(kg: number): number {
+    if (!Number.isFinite(kg) || kg <= 0) return 0;
+    return Math.max(round3(kg), MIN_CHARGEABLE_WEIGHT_KG);
+}
+
+export function volumetricWeightKg(lengthCm: number, widthCm: number, heightCm: number): number {
+    return (Math.max(0, lengthCm) * Math.max(0, widthCm) * Math.max(0, heightCm)) /
+        THAI_NEXUS_VOLUMETRIC_DIVISOR;
+}
+
+export function fillerDimsBelowActualWeight(actualKg: number): {
+    length: number;
+    width: number;
+    height: number;
+} {
+    const weight = chargeableWeightKg(actualKg) || MIN_CHARGEABLE_WEIGHT_KG;
+    const maxVolume = weight * THAI_NEXUS_VOLUMETRIC_DIVISOR * 0.5;
+    let side = Math.max(ACTUAL_WEIGHT_MIN_DIM_CM, Math.floor(Math.cbrt(maxVolume)));
+    while (side > ACTUAL_WEIGHT_MIN_DIM_CM && volumetricWeightKg(side, side, side) >= weight) {
+        side -= 1;
+    }
+    if (volumetricWeightKg(side, side, side) >= weight) {
+        side = ACTUAL_WEIGHT_MIN_DIM_CM;
+    }
+    return { length: side, width: side, height: side };
 }
 
 /** Box configs saved via the admin form can also carry string numbers. */
@@ -317,28 +369,18 @@ function buildRetailPackedBox(
 }
 
 /**
- * When the cart contains only one product (one or more line items for the same
- * product_id) and that product is flagged as boxed, quote each unit using the
+ * When every cart line is flagged as boxed, quote each unit using the
  * product's own dimensions (retail packaging) instead of merchant packing boxes.
  * Returns null when normal packing should apply.
  */
 export function packBoxedSingleItemCart(
     items: BcRateItem[],
     documentFlags: Record<string, boolean>,
-    boxedProductFlags: Record<string, boolean>
+    boxedProductFlags: Record<string, boolean>,
+    productWeightUnit: ProductWeightUnit = 'kg'
 ): { boxes: PackedBox[]; errors: string[] } | null {
     if (!items.length) return null;
-
-    const productIds = new Set<string>();
-    for (const item of items) {
-        const productId = item.product_id ? String(item.product_id) : '';
-        if (productId) productIds.add(productId);
-    }
-
-    if (productIds.size !== 1) return null;
-
-    const productId = [...productIds][0];
-    if (!boxedProductFlags[productId]) return null;
+    if (!items.every((item) => flagForItem(item, boxedProductFlags))) return null;
 
     const boxes: PackedBox[] = [];
     const errors: string[] = [];
@@ -359,10 +401,10 @@ export function packBoxedSingleItemCart(
         const l = toCm(item.length);
         const w = toCm(item.width);
         const h = toCm(item.height);
-        const kg = toKg(item.weight);
+        const kg = productWeightToKg(item.weight, productWeightUnit);
         const qty = Math.max(1, Math.round(toNum(item.quantity) ?? 1));
         const name = item.name?.trim() || 'Item';
-        const isDocument = Boolean(documentFlags[productId]);
+        const isDocument = flagForItem(item, documentFlags);
         const declaredValue = unitDeclaredValue(item);
         const currency = unitCurrency(item);
         const hsCode = normalizeHsCode(item.hs_code);
@@ -397,6 +439,73 @@ export function packBoxedSingleItemCart(
     return { boxes, errors: [] };
 }
 
+function packActualWeightOnly(
+    items: BcRateItem[],
+    documentFlags: Record<string, boolean>,
+    productWeightUnit: ProductWeightUnit
+): { boxes: PackedBox[]; errors: string[] } {
+    const errors: string[] = [];
+    let totalKg = 0;
+    const labels: string[] = [];
+    const units: PackUnit[] = [];
+    const documentChecks: boolean[] = [];
+
+    items.forEach((item, idx) => {
+        const qty = Math.max(1, Math.round(toNum(item.quantity) ?? 1));
+        const kg = productWeightToKg(item.weight, productWeightUnit, 0);
+        const name = item.name?.trim() || `Item ${idx + 1}`;
+        const isDocument = flagForItem(item, documentFlags);
+        if (!toNum(item.weight?.value)) {
+            errors.push(`"${name}" is missing weight`);
+            return;
+        }
+        totalKg += kg * qty;
+        labels.push(qty > 1 ? `${name} ×${qty}` : name);
+        documentChecks.push(isDocument);
+        for (let i = 0; i < qty; i++) {
+            units.push({
+                l: 1,
+                w: 1,
+                h: 1,
+                kg,
+                name,
+                productId: item.product_id ? String(item.product_id) : undefined,
+                isDocument,
+                declaredValue: unitDeclaredValue(item),
+                currency: unitCurrency(item),
+                hsCode: normalizeHsCode(item.hs_code),
+                origin: unitOrigin(item),
+            });
+        }
+    });
+
+    if (errors.length) return { boxes: [], errors };
+    if (!items.length || totalKg <= 0) {
+        return { boxes: [], errors: ['No shippable items'] };
+    }
+
+    const isDocument = documentChecks.length > 0 && documentChecks.every(Boolean);
+    const weight = chargeableWeightKg(totalKg);
+    const dims = fillerDimsBelowActualWeight(weight);
+    return {
+        boxes: [
+            {
+                length: dims.length,
+                width: dims.width,
+                height: dims.height,
+                weight,
+                isDocument,
+                boxId: ACTUAL_WEIGHT_BOX_ID,
+                boxName: ACTUAL_WEIGHT_BOX_NAME,
+                contents: { length: dims.length, width: dims.width, height: dims.height },
+                items: labels,
+                shipmentItems: shipmentItemsFromUnits(units),
+            },
+        ],
+        errors: [],
+    };
+}
+
 /**
  * Smart box packing:
  * - Boxes are tried smallest-volume-first; each parcel uses the SMALLEST box
@@ -411,10 +520,17 @@ export function packItems(
     documentFlags: Record<string, boolean> = {},
     options: PackItemsOptions = {}
 ): { boxes: PackedBox[]; errors: string[] } {
+    const productWeightUnit = sanitizeProductWeightUnit(options.productWeightUnit);
+
+    if (options.chargeActualWeightOnly) {
+        return packActualWeightOnly(items, documentFlags, productWeightUnit);
+    }
+
     const boxed = packBoxedSingleItemCart(
         items,
         documentFlags,
-        options.boxedProductFlags || {}
+        options.boxedProductFlags || {},
+        productWeightUnit
     );
     if (boxed) return boxed;
 
@@ -435,10 +551,10 @@ export function packItems(
         const l = toCm(item.length);
         const w = toCm(item.width);
         const h = toCm(item.height);
-        const kg = toKg(item.weight);
+        const kg = productWeightToKg(item.weight, productWeightUnit);
         const name = item.name?.trim() || `Item ${idx + 1}`;
         const productId = item.product_id ? String(item.product_id) : undefined;
-        const isDocument = productId ? Boolean(documentFlags[productId]) : false;
+        const isDocument = flagForItem(item, documentFlags);
         const declaredValue = unitDeclaredValue(item);
         const currency = unitCurrency(item);
         const hsCode = normalizeHsCode(item.hs_code);

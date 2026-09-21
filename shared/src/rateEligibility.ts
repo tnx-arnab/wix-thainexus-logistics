@@ -43,13 +43,25 @@ export function validateDestination(dest: BcAddress): string | null {
     return null;
 }
 
-export function validateCartMeasurements(items: BcRateItem[]): string | null {
+export function validateCartMeasurements(
+    items: BcRateItem[],
+    options?: { weightOnly?: boolean }
+): string | null {
     if (!items.length) {
         return 'Add items to the cart before Thai Nexus rates are available.';
     }
 
+    const weightOnly = options?.weightOnly === true;
+
     for (let i = 0; i < items.length; i++) {
         const item = items[i];
+        if (weightOnly) {
+            if (positiveNum(item.weight?.value) == null) {
+                const label = item.name?.trim() || `Item ${i + 1}`;
+                return `"${label}" is missing weight - Thai Nexus rates are hidden until every product has it.`;
+            }
+            continue;
+        }
         if (!itemHasMeasurements(item)) {
             const label = item.name?.trim() || `Item ${i + 1}`;
             return `"${label}" is missing weight or dimensions - Thai Nexus rates are hidden until every product has them.`;
@@ -138,18 +150,21 @@ export function validateRateRequest(input: {
     eligibleByProductId?: Record<string, boolean>;
     boxedProductFlags?: Record<string, boolean>;
 }): string | null {
-    const retailBoxing = cartQualifiesForRetailBoxing(
-        input.items,
-        input.boxedProductFlags ?? {}
-    );
+    const actualWeightOnly = Boolean(input.config?.chargeActualWeightOnly);
+    const retailBoxing =
+        !actualWeightOnly &&
+        cartQualifiesForRetailBoxing(input.items, input.boxedProductFlags ?? {});
 
     const checks = [
         () =>
             validateStoreReadyForRates(input.config, input.hasToken, {
-                requireBoxes: !retailBoxing,
+                requireBoxes: !retailBoxing && !actualWeightOnly,
             }),
         () => validateDestination(input.destination),
-        () => validateCartMeasurements(input.items),
+        () =>
+            validateCartMeasurements(input.items, {
+                weightOnly: actualWeightOnly,
+            }),
         () =>
             validateAllProductsEligible(
                 input.items,

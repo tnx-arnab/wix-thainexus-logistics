@@ -1,4 +1,4 @@
-import { calculateTotalCommission } from '../commission.js';
+import { applyCheckoutPricing } from '../commission.js';
 import { convertFromThb } from '../currency.js';
 import { appendDebugLog, isDebugEnabled } from '../d1/debugLog.js';
 import { packItems } from '../packing.js';
@@ -22,7 +22,9 @@ import {
     quoteMatchesServiceLevels,
 } from './shippingProvider.js';
 import { mergeShippingEligibleFlags, rateItemCatalogIds, validateRateRequest } from '../rateEligibility.js';
+import { filterCheckoutQuotes, quoteCoverageIds } from '../serviceCoverage.js';
 import { getApiToken, getConfig } from './store.js';
+import { sanitizeProductWeightUnit } from '../validation.js';
 
 const CARRIER = { code: CARRIER_CODE, display_name: CARRIER_DISPLAY_NAME };
 
@@ -166,6 +168,9 @@ export async function calculateRates(
     if (!storeId) return empty('Missing store id');
 
     const config = await getConfig(storeId);
+    if (config && config.enableCheckoutRates === false) {
+        return empty('Thai Nexus checkout rates are turned off.', 'INFO');
+    }
     const storedToken = await getApiToken(storeId);
     const token =
         options.apiToken?.trim() ||
@@ -213,16 +218,17 @@ export async function calculateRates(
     const boxes = config?.boxes ?? [];
     const commissionRules = config?.commissionRules ?? [];
 
-    const packing = packItems(items, boxes, documentFlags, { boxedProductFlags });
+    const packing = packItems(items, boxes, documentFlags, {
+        boxedProductFlags,
+        productWeightUnit: sanitizeProductWeightUnit(config?.productWeightUnit),
+        chargeActualWeightOnly: Boolean(config?.chargeActualWeightOnly),
+    });
     if (!packing.boxes.length) {
         return {
             quote_id: `tn_err_${Date.now()}`,
             messages: packing.errors.map((text) => ({ text, type: 'ERROR' })),
             carrier_quotes: [],
         };
-    }
-    if (packing.errors.length) {
-        return empty(packing.errors.join(' '), 'ERROR');
     }
 
     const apiCalls: DebugApiCall[] = [];
@@ -255,37 +261,55 @@ export async function calculateRates(
         items[0]?.discounted_price?.currency?.toUpperCase() ||
         'THB';
     const subtotal = cartSubtotal(items);
-    const commissionThb = calculateTotalCommission(commissionRules, items, subtotal);
-
-    // The BigCommerce carrier service-level config was removed (now app-managed),
-    // but BC still echoes a stale per-zone value (e.g. "same_day") that can no
-    // longer be edited or cleared via the API. Honoring it would filter out every
-    // real quote, so ignore it and offer all service levels the carrier returns.
-    const allowedLevels = parseZoneServiceLevels(undefined);
-    const disabledServices = new Set(
-        (config?.disabledServiceIds ?? []).map(normalizeServiceId)
+    const packedWeightKg = packing.boxes.reduce(
+        (sum, box) => sum + (Number(box.weight) || 0),
+        0
     );
-    // One quote per COURIER. Thai Nexus can return several couriers (e.g. Flex DAP,
-    // Prime DDP) that map to the same BC service level; deduping by service level
-    // would hide all but the cheapest, so the shopper would only ever see one option.
+    const itemQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
+
+    const allowedLevels = parseZoneServiceLevels(undefined);
     const quotesByCourier = new Map<
         string,
-        { serviceLevel: string; courierSlug: string; displayName: string; v: (typeof aggregated)[string]; amount: number; money: BcCarrierQuote['cost']; description: string; transit: ReturnType<typeof parseTransitDuration> }
+        {
+            serviceLevel: string;
+            courierSlug: string;
+            displayName: string;
+            serviceIds: string[];
+            v: (typeof aggregated)[string];
+            amount: number;
+            money: BcCarrierQuote['cost'];
+            description: string;
+            transit: ReturnType<typeof parseTransitDuration>;
+        }
     >();
     const finalQuotesDebug: DebugFinalQuote[] = [];
 
     for (const [courierKey, v] of Object.entries(aggregated)) {
         if (v.count < boxCount) continue;
 
-        if (disabledServices.has(normalizeServiceId(courierKey))) continue;
-
         const displayName = v.name;
+        const serviceIds = quoteCoverageIds(courierKey, displayName);
+
         if (!quoteMatchesServiceLevels(displayName, v.days, allowedLevels)) continue;
 
         const serviceLevel = classifyServiceLevel(displayName, v.days);
         const courierSlug = normalizeServiceId(courierKey);
 
-        const costThb = roundMoney(v.thb + commissionThb);
+        let costThb = applyCheckoutPricing(
+            v.thb,
+            commissionRules,
+            {
+                items,
+                cartSubtotal: subtotal,
+                destinationCountry,
+                cartWeightKg: packedWeightKg,
+                itemQuantity,
+                serviceIds: [...serviceIds, courierSlug],
+            },
+            { pricingMode: config?.pricingMode }
+        );
+        if (!Number.isFinite(costThb) || costThb < 0) continue;
+        costThb = roundMoney(costThb);
 
         let amount: number;
         try {
@@ -309,6 +333,7 @@ export async function calculateRates(
             serviceLevel,
             courierSlug,
             displayName,
+            serviceIds,
             v,
             amount,
             money,
@@ -317,8 +342,16 @@ export async function calculateRates(
         });
     }
 
+    const offeredCouriers = filterCheckoutQuotes(
+        [...quotesByCourier.values()],
+        (entry) => entry.serviceIds,
+        destinationCountry,
+        config?.disabledServiceIds,
+        config?.serviceCoverage
+    );
+
     const quotes: BcCarrierQuote[] = [];
-    for (const [, entry] of quotesByCourier) {
+    for (const entry of offeredCouriers) {
         quotes.push({
             code: entry.courierSlug,
             rate_id: `tn_${storeId}_${entry.courierSlug}`,

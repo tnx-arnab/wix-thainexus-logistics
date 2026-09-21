@@ -1,6 +1,10 @@
 import { shipmentCrud, apiSuggestHsCode } from './client.js';
-import { getApiToken } from './store.js';
-import { listStoredOrderShipments } from '../d1/orderShipments.js';
+import { getApiToken, getConfig } from './store.js';
+import {
+    findOrderShipmentByRequestNumber,
+    listStoredOrderShipments,
+    saveOrderShipments,
+} from '../d1/orderShipments.js';
 import {
     ShipmentDetail,
     ShipmentListResponse,
@@ -10,6 +14,7 @@ import { ShipperProfile } from '../types/thaiNexus.js';
 import { packItems, totalDeclaredValue } from '../packing.js';
 import { BcRateItem, ShippingBox } from '../types/thaiNexus.js';
 import { normalizeHsCode } from '../hsCode.js';
+import { sanitizeProductWeightUnit } from '../validation.js';
 import {
     mergeShipmentSummaries,
     normalizeShipmentDetail,
@@ -141,6 +146,41 @@ export async function getShipment(
     }
 }
 
+export async function syncShipmentTracking(
+    instanceId: string,
+    requestNumber: string
+): Promise<{ shipment: ShipmentDetail; orderId?: string }> {
+    const shipment = await getShipment(instanceId, requestNumber);
+    const record = await findOrderShipmentByRequestNumber(instanceId, requestNumber);
+    if (record) {
+        const tnx = shipment.tnx_tracking_number;
+        const nextShipments = (record.shipments || []).map((row) =>
+            row.request_number === requestNumber
+                ? {
+                      ...row,
+                      status: shipment.status || row.status,
+                      tnx_tracking_number: tnx || row.tnx_tracking_number,
+                      tracking_url: shipment.tracking_url || row.tracking_url,
+                  }
+                : row
+        );
+        if (!nextShipments.some((row) => row.request_number === requestNumber)) {
+            nextShipments.push({
+                request_number: requestNumber,
+                status: shipment.status,
+                tnx_tracking_number: tnx,
+                tracking_url: shipment.tracking_url,
+            });
+        }
+        await saveOrderShipments({
+            ...record,
+            shipments: nextShipments,
+        });
+    }
+
+    return { shipment, orderId: record?.orderId };
+}
+
 export interface CreateOrderShipmentsInput {
     instanceId: string;
     orderId: string | number;
@@ -247,8 +287,11 @@ export async function createShipmentsForOrder(
     }
 
     const items = await fillMissingItemHsCodes(input.items, input.consignee.country);
+    const config = await getConfig(input.instanceId);
     const packing = packItems(items, input.boxes, input.documentFlags || {}, {
         boxedProductFlags: input.boxedProductFlags || {},
+        productWeightUnit: sanitizeProductWeightUnit(config?.productWeightUnit),
+        chargeActualWeightOnly: Boolean(config?.chargeActualWeightOnly),
     });
     if (!packing.boxes.length) {
         throw new Error(packing.errors[0] || 'Could not pack order items');
@@ -258,8 +301,7 @@ export async function createShipmentsForOrder(
     const consigneeAddress = cleanAddress(input.consignee);
     const created: Array<{ request_number: string; status?: string; id?: string | number }> =
         [];
-    // Carry forward packing warnings (e.g. "missing dimensions - using defaults").
-    const errors: string[] = [...packing.errors];
+    const errors: string[] = [];
 
     const startBoxIndex = Math.max(0, input.startBoxIndex ?? 0);
     const serviceId = input.serviceId?.trim();
@@ -282,7 +324,7 @@ export async function createShipmentsForOrder(
                     width_cm: box.width,
                     height_cm: box.height,
                     is_document: box.isDocument,
-                    shipment_type: 'parcel',
+                    shipment_type: box.isDocument ? 'document' : 'parcel',
                     ...(serviceId
                         ? {
                               service_id: serviceId,

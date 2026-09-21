@@ -106,7 +106,7 @@ export default function BoxesPage({ config, onSaved }: BoxesPageProps) {
     return (
         <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="bg-secondary p-5 flex items-center justify-between gap-4">
+                <div className="bg-primary p-5 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <Package className="text-white w-6 h-6" />
                         <div>

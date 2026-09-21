@@ -35,6 +35,8 @@ export interface ShipmentDetail extends ShipmentSummary {
     width_cm?: number;
     height_cm?: number;
     shipment_description?: string;
+    tnx_tracking_number?: string;
+    tracking_url?: string;
 }
 
 export interface ShipmentListResponse {
@@ -53,6 +55,8 @@ export interface OrderShipmentRecord {
         request_number: string;
         status?: string;
         id?: string | number;
+        tnx_tracking_number?: string;
+        tracking_url?: string;
     }>;
     packedBoxes?: Array<{
         length: number;

@@ -31,7 +31,7 @@ router.get('/webhook-status', async (req, res) => {
         lastOrderWebhook: orderWebhooks[0] || null,
         hint:
             orderWebhooks.length === 0
-                ? 'No Wix POST to /api/webhooks/orders yet. Release pending app version (Distribute), use Webhooks → Trigger a test, then place a new PAID order. Backfill old orders via Shipments → Sync from Wix orders.'
+                ? 'No Wix POST to /api/webhooks/orders yet. Release pending app version (Distribute), use Webhooks → Trigger a test, then place a new PAID order.'
                 : undefined,
     });
 });

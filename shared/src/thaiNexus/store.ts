@@ -3,13 +3,21 @@ import { isDebugEnabled } from '../d1/debugLog.js';
 import { first, parseJson, run, toJson } from '../d1/client.js';
 import {
     sanitizeBoxes,
+    sanitizeChargeActualWeightOnly,
     sanitizeCommissionRules,
     sanitizeDisabledServiceIds,
     sanitizeProductIds,
+    sanitizeProductWeightUnit,
+    sanitizeServiceCoverage,
+    sanitizePricingMode,
 } from '../validation.js';
+import { resolvePricingMode } from '../commission.js';
 import {
     CommissionRule,
     MarkupRule,
+    PricingMode,
+    ProductWeightUnit,
+    ServiceCoverage,
     ShipperProfile,
     ShippingBox,
     StoreConfig,
@@ -89,6 +97,11 @@ export function toPublic(config: StoreConfig | null): StoreConfigPublic {
             shipper: DEFAULT_SHIPPER,
             commissionRules: [],
             boxes: [],
+            serviceCoverage: {},
+            productWeightUnit: 'kg',
+            chargeActualWeightOnly: false,
+            enableCheckoutRates: true,
+            enableAutoShipments: true,
             currencySymbol: '฿',
             debugEnabled: isDebugEnabled(),
         };
@@ -102,7 +115,16 @@ export function toPublic(config: StoreConfig | null): StoreConfigPublic {
         commissionRules: c.commissionRules || [],
         boxes: c.boxes || [],
         disabledServiceIds: sanitizeDisabledServiceIds(c.disabledServiceIds),
+        serviceCoverage: sanitizeServiceCoverage(c.serviceCoverage),
+        productWeightUnit: sanitizeProductWeightUnit(c.productWeightUnit),
+        chargeActualWeightOnly: sanitizeChargeActualWeightOnly(c.chargeActualWeightOnly),
         shippingIneligibleProductIds: sanitizeProductIds(c.shippingIneligibleProductIds),
+        pricingMode: resolvePricingMode(
+            c.commissionRules || [],
+            sanitizePricingMode(c.pricingMode)
+        ),
+        enableCheckoutRates: c.enableCheckoutRates !== false,
+        enableAutoShipments: c.enableAutoShipments !== false,
         currencySymbol: '฿',
         updatedAt: c.updatedAt,
         debugEnabled: isDebugEnabled(),
@@ -141,7 +163,13 @@ export async function saveConfig(
         commissionRules?: CommissionRule[];
         boxes?: ShippingBox[];
         disabledServiceIds?: string[];
+        serviceCoverage?: Record<string, ServiceCoverage>;
+        productWeightUnit?: ProductWeightUnit;
+        chargeActualWeightOnly?: boolean;
         shippingIneligibleProductIds?: Array<string | number>;
+        pricingMode?: PricingMode;
+        enableCheckoutRates?: boolean;
+        enableAutoShipments?: boolean;
     }
 ) {
     const existing = await getConfig(instanceId);
@@ -154,11 +182,27 @@ export async function saveConfig(
         disabledServiceIds: sanitizeDisabledServiceIds(
             input.disabledServiceIds ?? existing?.disabledServiceIds ?? []
         ),
+        serviceCoverage: sanitizeServiceCoverage(
+            input.serviceCoverage ?? existing?.serviceCoverage ?? {}
+        ),
+        productWeightUnit: sanitizeProductWeightUnit(
+            input.productWeightUnit ?? existing?.productWeightUnit
+        ),
+        chargeActualWeightOnly: sanitizeChargeActualWeightOnly(
+            input.chargeActualWeightOnly ?? existing?.chargeActualWeightOnly
+        ),
         shippingIneligibleProductIds: sanitizeProductIds(
             input.shippingIneligibleProductIds ?? existing?.shippingIneligibleProductIds ?? []
         ),
+        enableCheckoutRates: (input.enableCheckoutRates ?? existing?.enableCheckoutRates) !== false,
+        enableAutoShipments: (input.enableAutoShipments ?? existing?.enableAutoShipments) !== false,
         updatedAt: new Date().toISOString(),
     };
+
+    const pricingMode = sanitizePricingMode(input.pricingMode ?? existing?.pricingMode);
+    if (pricingMode) {
+        data.pricingMode = pricingMode;
+    }
 
     if (input.apiToken?.trim()) {
         data.apiTokenEncrypted = encryptSecret(input.apiToken.trim());

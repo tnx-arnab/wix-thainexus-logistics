@@ -50,15 +50,33 @@ router.put('/', async (req, res) => {
         });
     }
 
-    const { apiToken, shipper, commissionRules, boxes, disabledServiceIds, shippingIneligibleProductIds } =
-        body as {
-            apiToken?: string;
-            shipper?: ShipperProfile;
-            commissionRules?: CommissionRule[];
-            boxes?: ShippingBox[];
-            disabledServiceIds?: string[];
-            shippingIneligibleProductIds?: Array<string | number>;
-        };
+    const {
+        apiToken,
+        shipper,
+        commissionRules,
+        boxes,
+        disabledServiceIds,
+        serviceCoverage,
+        productWeightUnit,
+        chargeActualWeightOnly,
+        shippingIneligibleProductIds,
+        pricingMode,
+        enableCheckoutRates,
+        enableAutoShipments,
+    } = body as {
+        apiToken?: string;
+        shipper?: ShipperProfile;
+        commissionRules?: CommissionRule[];
+        boxes?: ShippingBox[];
+        disabledServiceIds?: string[];
+        serviceCoverage?: Record<string, import('@thai-nexus/shared').ServiceCoverage>;
+        productWeightUnit?: import('@thai-nexus/shared').ProductWeightUnit;
+        chargeActualWeightOnly?: boolean;
+        shippingIneligibleProductIds?: Array<string | number>;
+        pricingMode?: import('@thai-nexus/shared').PricingMode;
+        enableCheckoutRates?: boolean;
+        enableAutoShipments?: boolean;
+    };
 
     if (shipper) {
         const shipperError = validateShipper(shipper);
@@ -82,8 +100,14 @@ router.put('/', async (req, res) => {
             commissionRules: commissionRules ?? existing.commissionRules,
             boxes: boxes ?? existing.boxes,
             disabledServiceIds: disabledServiceIds ?? existing.disabledServiceIds,
+            serviceCoverage: serviceCoverage ?? existing.serviceCoverage,
+            productWeightUnit: productWeightUnit ?? existing.productWeightUnit,
+            chargeActualWeightOnly: chargeActualWeightOnly ?? existing.chargeActualWeightOnly,
             shippingIneligibleProductIds:
                 shippingIneligibleProductIds ?? existing.shippingIneligibleProductIds ?? [],
+            pricingMode: pricingMode ?? existing.pricingMode,
+            enableCheckoutRates: enableCheckoutRates ?? existing.enableCheckoutRates,
+            enableAutoShipments: enableAutoShipments ?? existing.enableAutoShipments,
         });
 
         return res.json({ ...saved, instanceId: session.instanceId });

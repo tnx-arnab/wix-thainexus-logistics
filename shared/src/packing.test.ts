@@ -53,14 +53,16 @@ describe('packBoxedSingleItemCart', () => {
         assert.ok(result.boxes.every((b) => b.weight === 0.15));
     });
 
-    it('returns null for multi-line carts with different products even when boxed', () => {
+    it('returns retail parcels when every product is boxed, even across SKUs', () => {
         const result = packBoxedSingleItemCart(
             [phoneCaseItem(), phoneCaseItem({ product_id: '102', name: 'Shoe box' })],
             {},
             { '101': true, '102': true }
         );
 
-        assert.equal(result, null);
+        assert.ok(result);
+        assert.equal(result.boxes.length, 2);
+        assert.ok(result.boxes.every((b) => b.boxId === 'retail_box'));
     });
 
     it('uses retail dims when multiple lines share one boxed product', () => {
@@ -121,7 +123,7 @@ describe('packItems boxed integration', () => {
             ],
             [merchantBox],
             {},
-            { boxedProductFlags: { '101': true, '102': true } }
+            { boxedProductFlags: { '101': true } }
         );
 
         assert.equal(packing.boxes.length, 1);
@@ -182,5 +184,15 @@ describe('packItems boxed integration', () => {
 
         assert.equal(packing.boxes.length, 0);
         assert.ok(packing.errors.some((e) => /does not fit|could not be packed/i.test(e)));
+    });
+
+    it('still packs when dimensions are missing and records a warning', () => {
+        const packing = packItems(
+            [phoneCaseItem({ length: { units: 'cm', value: 0 } })],
+            [merchantBox]
+        );
+
+        assert.equal(packing.boxes.length, 1);
+        assert.ok(packing.errors.some((e) => /missing dimensions/i.test(e)));
     });
 });

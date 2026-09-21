@@ -7,11 +7,12 @@ import {
     MapPin,
     Package,
     Phone,
+    RefreshCw,
     User,
     X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, syncRecentOrders } from '../lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, syncShipmentTracking } from '../lib/api';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
 function statusClass(status: string | undefined, header = false): string {
@@ -47,32 +48,9 @@ export default function ShipmentsPage() {
     const [warning, setWarning] = useState<string | null>(null);
     const [selected, setSelected] = useState<ShipmentDetail | null>(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
-
     const [syncing, setSyncing] = useState(false);
-    const [reloadKey, setReloadKey] = useState(0);
-
-    const runSyncFromWix = async () => {
-        setSyncing(true);
-        try {
-            const res = await syncRecentOrders(15);
-            const created = res.results.filter((r) => r.ok && !r.skipped);
-            const lines = res.results
-                .slice(0, 8)
-                .map((r) => `#${r.number || r.orderId}: ${r.reason}`)
-                .join('\n');
-            alert(
-                created.length
-                    ? `Created ${created.length} shipment(s) from Wix orders.\n${lines}`
-                    : `No new shipments.\n${lines || res.hint || 'Check webhook setup for future orders.'}`
-            );
-            setPage(1);
-            setReloadKey((k) => k + 1);
-        } catch (err) {
-            alert(err instanceof Error ? err.message : 'Sync failed');
-        } finally {
-            setSyncing(false);
-        }
-    };
+    const [syncMessage, setSyncMessage] = useState('');
+    const [query, setQuery] = useState('');
 
     const [webhookHint, setWebhookHint] = useState<string | null>(null);
 
@@ -113,10 +91,29 @@ export default function ShipmentsPage() {
                 setTotal(0);
             })
             .finally(() => setLoading(false));
-    }, [page, reloadKey]);
+    }, [page]);
+
+    const visibleShipments = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return shipments;
+        return shipments.filter((s) =>
+            [s.request_number, s.status].some((v) => String(v || '').toLowerCase().includes(q))
+        );
+    }, [shipments, query]);
+
+    const trackingUrl = (shipment: ShipmentDetail | null) => {
+        if (!shipment) return '';
+        if (shipment.tracking_url) return shipment.tracking_url;
+        const tnx = shipment.tnx_tracking_number;
+        if (tnx) return `https://tracking.thainexus.co.th/track/${tnx}`;
+        const raw = JSON.stringify(shipment);
+        const match = raw.match(/TNX[A-Z0-9]+/i);
+        return match ? `https://tracking.thainexus.co.th/track/${match[0].toUpperCase()}` : '';
+    };
 
     const openDetail = async (requestNumber: string) => {
         setDetailsLoading(true);
+        setSyncMessage('');
         setSelected({ request_number: requestNumber });
         try {
             const detail = await fetchShipmentDetail(requestNumber);
@@ -126,6 +123,34 @@ export default function ShipmentsPage() {
             alert('Could not load shipment details.');
         } finally {
             setDetailsLoading(false);
+        }
+    };
+
+    const syncShipment = async () => {
+        const requestNumber = selected?.request_number;
+        if (!requestNumber || syncing) return;
+        setSyncing(true);
+        setSyncMessage('');
+        try {
+            const data = await syncShipmentTracking(requestNumber);
+            if (data.shipment) setSelected(data.shipment);
+            const updated = data.orders_updated ?? 0;
+            const url = data.shipment ? trackingUrl(data.shipment) : '';
+            setSyncMessage(
+                updated > 0
+                    ? `Synced TNX, status, and ${updated} Wix order update${updated === 1 ? '' : 's'}.`
+                    : url
+                      ? `Tracking: ${url}`
+                      : 'Synced. No TNX tracking code yet.'
+            );
+            fetchShipments(page, 10).then((res) => {
+                setShipments(Array.isArray(res.data) ? res.data : []);
+                setTotal(res.pagination?.total ?? res.total ?? res.data?.length ?? 0);
+            });
+        } catch (err) {
+            setSyncMessage(err instanceof Error ? err.message : 'Could not sync this shipment.');
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -144,7 +169,7 @@ export default function ShipmentsPage() {
                 </div>
             ) : null}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="bg-secondary p-5 flex items-center justify-between">
+                <div className="bg-primary p-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Package className="text-white w-6 h-6" />
                         <div>
@@ -152,14 +177,15 @@ export default function ShipmentsPage() {
                             <p className="text-white/80 text-sm">{total || shipments.length} total</p>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        disabled={syncing}
-                        onClick={() => void runSyncFromWix()}
-                        className="text-sm bg-white/15 hover:bg-white/25 text-white px-3 py-2 rounded-lg disabled:opacity-50"
-                    >
-                        {syncing ? 'Syncing…' : 'Sync from Wix orders'}
-                    </button>
+                </div>
+                <div className="px-6 py-3 border-b border-gray-100">
+                    <input
+                        type="search"
+                        className="tnxl-input"
+                        placeholder="Search request number or status"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                    />
                 </div>
 
                 <div className="overflow-x-auto">
@@ -191,7 +217,7 @@ export default function ShipmentsPage() {
                                         </p>
                                     </td>
                                 </tr>
-                            ) : shipments.length === 0 ? (
+                            ) : visibleShipments.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="py-16 text-center text-gray-500">
                                         <Package className="w-10 h-10 mx-auto text-gray-300 mb-3" />
@@ -200,7 +226,7 @@ export default function ShipmentsPage() {
                                     </td>
                                 </tr>
                             ) : (
-                                shipments.map((s) => (
+                                visibleShipments.map((s) => (
                                     <tr
                                         key={s.request_number}
                                         className="border-t border-gray-100 hover:bg-gray-50/80"
@@ -307,6 +333,16 @@ export default function ShipmentsPage() {
                                         address={selected.consignee_address}
                                     />
                                 </div>
+                                {trackingUrl(selected) ? (
+                                    <a
+                                        href={trackingUrl(selected)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex text-sm font-medium text-primary hover:underline"
+                                    >
+                                        Track shipment
+                                    </a>
+                                ) : null}
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {[
@@ -337,10 +373,29 @@ export default function ShipmentsPage() {
                             </div>
                         )}
 
-                        <div className="p-6 border-t flex justify-end">
+                        <div className="p-6 border-t flex flex-wrap justify-end items-center gap-3">
+                            {syncMessage ? (
+                                <p className="text-xs text-gray-600 mr-auto">{syncMessage}</p>
+                            ) : null}
                             <button
                                 type="button"
-                                onClick={() => setSelected(null)}
+                                onClick={syncShipment}
+                                disabled={syncing || detailsLoading || !selected.request_number}
+                                className="tnxl-btn-secondary inline-flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {syncing ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <RefreshCw size={14} />
+                                )}
+                                Sync tracking
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelected(null);
+                                    setSyncMessage('');
+                                }}
                                 className="tnxl-btn-secondary"
                             >
                                 Close

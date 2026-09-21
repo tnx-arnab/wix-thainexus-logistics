@@ -42,5 +42,8 @@
     "THAI_NEXUS_TIMEOUT_MS": "25000",
     "SPI_DEADLINE_MS": "0",
     "WIX_SPI_FAST_MS": "8500"
+  },
+  "triggers": {
+    "crons": ["0 * * * *"]
   }
 }

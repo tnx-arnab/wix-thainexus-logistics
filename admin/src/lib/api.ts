@@ -109,7 +109,7 @@ export async function fetchProductPhysical(productId: string): Promise<ProductPh
 
 export async function saveProductPhysical(
     productId: string,
-    dims: { lengthCm: number; widthCm: number; heightCm: number; weightLb?: number; hsCode?: string }
+    dims: { lengthCm: number; widthCm: number; heightCm: number; weightKg?: number; weightLb?: number; hsCode?: string; countryOfOrigin?: string }
 ): Promise<ProductPhysicalResult> {
     const { data } = await api.put<ProductPhysicalResult>(
         `/api/products/${encodeURIComponent(productId)}/physical`,
@@ -151,6 +151,20 @@ export async function fetchShipmentDetail(requestNumber: string): Promise<Shipme
     const { data } = await api.get<ShipmentDetail>(
         `/api/shipments/${encodeURIComponent(requestNumber)}`
     );
+
+    return data;
+}
+
+export async function syncShipmentTracking(requestNumber: string): Promise<{
+    shipment: ShipmentDetail;
+    orderId?: string | null;
+    orders_updated?: number;
+}> {
+    const { data } = await api.post<{
+        shipment: ShipmentDetail;
+        orderId?: string | null;
+        orders_updated?: number;
+    }>(`/api/shipments/${encodeURIComponent(requestNumber)}/sync`);
 
     return data;
 }

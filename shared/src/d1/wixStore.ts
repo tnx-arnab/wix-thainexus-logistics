@@ -1,7 +1,7 @@
 import { decryptStoredSecret, encryptSecret } from '../crypto.js';
 import { resolveInstanceId } from '../session.js';
 import { SessionProps } from '../types/index.js';
-import { boolInt, first, getDb, run } from './client.js';
+import { all, boolInt, first, getDb, run } from './client.js';
 
 export type StoreRow = {
     instance_id: string;
@@ -78,6 +78,11 @@ export async function hasStoreUser(instanceId: string, userId: string) {
         `${userId}_${instanceId}`
     );
     return Boolean(row);
+}
+
+export async function listInstanceIds(): Promise<string[]> {
+    const rows = await all<{ instance_id: string }>('SELECT instance_id FROM stores');
+    return rows.map((row) => row.instance_id).filter(Boolean);
 }
 
 export async function getStoreToken(instanceId: string) {

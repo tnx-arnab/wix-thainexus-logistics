@@ -47,6 +47,12 @@ export default function App() {
     };
 
     useEffect(() => {
+        if (config?.chargeActualWeightOnly && activeTab === 'boxes') {
+            setActiveTab('settings');
+        }
+    }, [config?.chargeActualWeightOnly, activeTab]);
+
+    useEffect(() => {
         let cancelled = false;
 
         (async () => {
@@ -211,9 +217,10 @@ export default function App() {
         );
     }
 
-    const tabs = config?.debugEnabled
+    const tabs = (config?.debugEnabled
         ? [...baseTabs, { id: 'debug' as const, label: 'Debug', icon: Bug }]
-        : [...baseTabs];
+        : [...baseTabs]
+    ).filter((tab) => tab.id !== 'boxes' || !config?.chargeActualWeightOnly);
 
     return (
         <div className="min-h-screen p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto font-sans">

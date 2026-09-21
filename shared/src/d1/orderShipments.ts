@@ -84,6 +84,9 @@ export async function listStoredOrderShipments(instanceId: string): Promise<Ship
                 request_number: shipment.request_number,
                 status: shipment.status,
                 created_at: createdAt,
+                data: shipment.tnx_tracking_number
+                    ? { tnx_tracking_number: shipment.tnx_tracking_number }
+                    : undefined,
             });
         }
 
@@ -98,4 +101,26 @@ export async function listStoredOrderShipments(instanceId: string): Promise<Ship
     }
 
     return summaries;
+}
+
+export async function findOrderShipmentByRequestNumber(
+    instanceId: string,
+    requestNumber: string
+): Promise<OrderShipmentRecord | null> {
+    const rows = await all<{ data: string }>(
+        `SELECT data FROM order_shipments WHERE instance_id = ?`,
+        instanceId
+    );
+
+    for (const row of rows) {
+        const record = parseJson<OrderShipmentRecord | null>(row.data, null);
+        if (!record) continue;
+        const numbers = [
+            ...(record.requestNumbers || []),
+            ...(record.shipments || []).map((s) => s.request_number),
+        ];
+        if (numbers.includes(requestNumber)) return record;
+    }
+
+    return null;
 }

@@ -46,9 +46,41 @@ export function normalizeShipmentSummary(row: unknown): ShipmentSummary {
     };
 }
 
+export function extractTnxCode(row: unknown): string {
+    const record = asRecord(row);
+    if (!record) return '';
+
+    const sources = [record, asRecord(record.data)].filter(Boolean) as Record<string, unknown>[];
+    const keys = [
+        'tnx_tracking_number',
+        'customer_tracking_code',
+        'tnx_tracking_code',
+        'tnx_code',
+        'tracking_number',
+    ];
+
+    for (const source of sources) {
+        for (const key of keys) {
+            const candidate = String(source[key] ?? '').trim().toUpperCase();
+            if (/^TNX[A-Z0-9]+$/.test(candidate)) return candidate;
+        }
+    }
+
+    return '';
+}
+
+export const TRACKING_BASE = 'https://tracking.thainexus.co.th/track/';
+
+export function trackingUrlFor(tnx: string): string {
+    const code = tnx.trim().toUpperCase();
+    return code ? `${TRACKING_BASE}${encodeURIComponent(code)}` : '';
+}
+
 export function normalizeShipmentDetail(payload: unknown): ShipmentDetail {
     const row = asRecord(payload) || {};
     const summary = normalizeShipmentSummary(row);
+    const nested = asRecord(row.data) || {};
+    const tnx = extractTnxCode({ ...nested, ...row });
 
     return {
         ...summary,
@@ -62,6 +94,9 @@ export function normalizeShipmentDetail(payload: unknown): ShipmentDetail {
         shipment_description:
             pickString(row, 'shipment_description', 'shipmentDescription', 'description') ||
             undefined,
+        tnx_tracking_number: tnx || undefined,
+        tracking_url: tnx ? trackingUrlFor(tnx) : undefined,
+        data: row,
     };
 }
 

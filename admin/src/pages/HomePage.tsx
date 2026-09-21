@@ -33,6 +33,18 @@ export default function HomePage({
     }
 
     if (tab === 'boxes') {
+        if (config?.chargeActualWeightOnly) {
+            return (
+                <div className="tnxl-card border-l-4 border-l-amber-500 bg-amber-50 text-amber-950 text-sm p-6 space-y-2">
+                    <h2 className="text-lg font-semibold text-amber-950">Boxes are hidden</h2>
+                    <p>
+                        Charge actual product weight only is on. Box inventory is not used for
+                        quotes. Turn that setting off in Settings to edit boxes.
+                    </p>
+                </div>
+            );
+        }
+
         return <BoxesPage config={config} onSaved={onReload} />;
     }
 

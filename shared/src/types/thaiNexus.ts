@@ -10,7 +10,47 @@ export interface ShipperProfile {
 }
 
 export type CommissionConditionType = 'subtotal_range' | 'specific_products';
-export type FeeType = 'fixed' | 'percentage';
+export type CommissionConditionKind =
+    | 'subtotal_range'
+    | 'specific_products'
+    | 'destination_country'
+    | 'weight_range'
+    | 'item_quantity'
+    | 'shipping_service';
+export type FeeType = 'fixed' | 'percentage' | 'quote_percentage' | 'mixed';
+export type PickupUnit = 'once' | 'per_item' | 'per_kg';
+export type PricingMode = 'basic' | 'advanced';
+export type ProductWeightUnit = 'kg' | 'g';
+
+export interface CommissionCondition {
+    type: CommissionConditionKind;
+    minRange?: number;
+    maxRange?: number;
+    specificProducts?: Array<string | number>;
+    countries?: string[];
+    excludeCountries?: boolean;
+    minKg?: number;
+    maxKg?: number;
+    minQuantity?: number;
+    maxQuantity?: number;
+    serviceIds?: string[];
+}
+
+export interface CheckoutPricingContext {
+    items: BcRateItem[];
+    cartSubtotal: number;
+    destinationCountry?: string;
+    cartWeightKg?: number;
+    itemQuantity?: number;
+    serviceIds?: string[];
+}
+
+export interface ServiceCoverage {
+    worldwide: boolean;
+    countries: string[];
+    restOfWorld?: boolean;
+    excludeCountries?: boolean;
+}
 
 export interface CommissionRule {
     id: string;
@@ -18,8 +58,13 @@ export interface CommissionRule {
     minRange?: number;
     maxRange?: number;
     specificProducts?: Array<string | number>;
+    conditions?: CommissionCondition[];
     feeType: FeeType;
     feeValue: number;
+    markupPercent?: number;
+    cartPercent?: number;
+    pickupUnit?: PickupUnit;
+    stopProcessing?: boolean;
     feeLabel?: string;
 }
 
@@ -54,8 +99,13 @@ export interface StoreConfig {
     boxes: ShippingBox[];
     /** Unchecked services - empty/undefined means all services enabled. */
     disabledServiceIds?: string[];
-    /** Bulk-excluded products (Wix catalog item ids as strings). */
+    serviceCoverage?: Record<string, ServiceCoverage>;
+    productWeightUnit?: ProductWeightUnit;
+    chargeActualWeightOnly?: boolean;
     shippingIneligibleProductIds?: Array<string | number>;
+    pricingMode?: PricingMode;
+    enableCheckoutRates?: boolean;
+    enableAutoShipments?: boolean;
     updatedAt?: string;
     /** Legacy */
     markup?: MarkupRule;
@@ -67,7 +117,13 @@ export interface StoreConfigPublic {
     commissionRules: CommissionRule[];
     boxes: ShippingBox[];
     disabledServiceIds?: string[];
+    serviceCoverage?: Record<string, ServiceCoverage>;
+    productWeightUnit?: ProductWeightUnit;
+    chargeActualWeightOnly?: boolean;
     shippingIneligibleProductIds?: Array<string | number>;
+    pricingMode?: PricingMode;
+    enableCheckoutRates?: boolean;
+    enableAutoShipments?: boolean;
     currencySymbol?: string;
     updatedAt?: string;
     debugEnabled?: boolean;

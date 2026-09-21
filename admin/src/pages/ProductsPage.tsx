@@ -1,8 +1,10 @@
 import { CheckCircle2, Loader2, Ruler, XCircle } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import ProductSearchCombobox from '../components/ProductSearchCombobox';
-import { fetchProductPhysical, saveProductPhysical } from '../lib/api';
+import { fetchProductFlags, fetchProductPhysical, saveProductFlags, saveProductPhysical } from '../lib/api';
 import type { ProductPhysicalResult, ProductSearchResult } from '../lib/types';
+
+// Native Wix product-page editor is not needed for now. Merchants use this Products tab.
 
 export default function ProductsPage() {
     const [selected, setSelected] = useState<ProductSearchResult | null>(null);
@@ -10,8 +12,12 @@ export default function ProductsPage() {
     const [lengthCm, setLengthCm] = useState('');
     const [widthCm, setWidthCm] = useState('');
     const [heightCm, setHeightCm] = useState('');
-    const [weightLb, setWeightLb] = useState('');
+    const [weightKg, setWeightKg] = useState('');
     const [hsCode, setHsCode] = useState('');
+    const [countryOfOrigin, setCountryOfOrigin] = useState('TH');
+    const [shippingEligible, setShippingEligible] = useState(true);
+    const [isBoxedProduct, setIsBoxedProduct] = useState(false);
+    const [isDocument, setIsDocument] = useState(false);
     const [loadingPhysical, setLoadingPhysical] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -24,17 +30,24 @@ export default function ProductsPage() {
         setMessage(null);
         setPhysical(null);
         try {
-            const data = await fetchProductPhysical(String(p.id));
+            const [data, flags] = await Promise.all([
+                fetchProductPhysical(String(p.id)),
+                fetchProductFlags(String(p.id)).catch(() => ({
+                    shippingEligible: true,
+                    isBoxedProduct: false,
+                    isDocument: false,
+                })),
+            ]);
             setPhysical(data);
             setLengthCm(data.lengthCm ? String(data.lengthCm) : '');
             setWidthCm(data.widthCm ? String(data.widthCm) : '');
             setHeightCm(data.heightCm ? String(data.heightCm) : '');
-            setWeightLb(
-                data.weightKg
-                    ? String(Math.round((data.weightKg / 0.45359237) * 100) / 100)
-                    : '1'
-            );
+            setWeightKg(data.weightKg ? String(Math.round(data.weightKg * 1000) / 1000) : '');
             setHsCode(data.hsCode || '');
+            setCountryOfOrigin(data.countryOfOrigin || 'TH');
+            setShippingEligible(flags.shippingEligible !== false);
+            setIsBoxedProduct(Boolean(flags.isBoxedProduct));
+            setIsDocument(Boolean(flags.isDocument));
         } catch (err) {
             setPhysical(null);
             setError(err instanceof Error ? err.message : 'Could not load product');
@@ -61,11 +74,18 @@ export default function ProductsPage() {
                 lengthCm: Number(lengthCm),
                 widthCm: Number(widthCm),
                 heightCm: Number(heightCm),
-                weightLb: Number(weightLb),
+                weightKg: Number(weightKg),
                 hsCode,
+                countryOfOrigin,
+            });
+            await saveProductFlags(String(selected.id), {
+                shippingEligible,
+                isBoxedProduct,
+                isDocument,
             });
             setPhysical(data);
             setHsCode(data.hsCode || '');
+            setCountryOfOrigin(data.countryOfOrigin || countryOfOrigin);
             setMessage(
                 data.readyForRates
                     ? !data.ratesPersisted && data.warning
@@ -179,14 +199,14 @@ export default function ProductsPage() {
                             Save shipping weight and package size
                         </p>
                         <label className="text-sm block max-w-xs">
-                            Shipping weight (lb)
+                            Shipping weight (kg)
                             <input
                                 type="number"
-                                min={0.01}
-                                step={0.01}
+                                min={0.001}
+                                step={0.001}
                                 className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5"
-                                value={weightLb}
-                                onChange={(ev) => setWeightLb(ev.target.value)}
+                                value={weightKg}
+                                onChange={(ev) => setWeightKg(ev.target.value)}
                                 required
                             />
                         </label>
@@ -240,6 +260,43 @@ export default function ProductsPage() {
                                 placeholder="180690"
                             />
                         </label>
+                        <label className="text-sm block max-w-xs">
+                            Country of origin
+                            <input
+                                type="text"
+                                maxLength={2}
+                                className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5"
+                                value={countryOfOrigin}
+                                onChange={(ev) => setCountryOfOrigin(ev.target.value.toUpperCase())}
+                                placeholder="TH"
+                            />
+                        </label>
+                        <div className="space-y-2 text-sm">
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={shippingEligible}
+                                    onChange={(e) => setShippingEligible(e.target.checked)}
+                                />
+                                Include in Thai Nexus shipping
+                            </label>
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={isBoxedProduct}
+                                    onChange={(e) => setIsBoxedProduct(e.target.checked)}
+                                />
+                                Is boxed?
+                            </label>
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={isDocument}
+                                    onChange={(e) => setIsDocument(e.target.checked)}
+                                />
+                                This product is a document shipment
+                            </label>
+                        </div>
                         <button
                             type="submit"
                             disabled={saving}
