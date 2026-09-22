@@ -3,6 +3,7 @@ import {
     CheckCircle2,
     Key,
     Loader2,
+    Mail,
     MapPin,
     Package,
     Pencil,
@@ -899,6 +900,20 @@ export default function SettingsPage({ config, onSaved }: SettingsPageProps) {
                                     setShipper((s) => ({ ...s, phone: e.target.value }))
                                 }
                                 required
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                <Mail size={16} className="text-gray-400" />
+                                Email
+                            </label>
+                            <input
+                                type="email"
+                                className="tnxl-input"
+                                value={shipper.email ?? ''}
+                                onChange={(e) =>
+                                    setShipper((s) => ({ ...s, email: e.target.value }))
+                                }
                             />
                         </div>
                         <div className="md:col-span-2">

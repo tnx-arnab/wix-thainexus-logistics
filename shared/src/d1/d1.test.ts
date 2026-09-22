@@ -132,6 +132,20 @@ test('stores: update tokens, users, delete', async () => {
     assert.equal(await hasStoreUser('inst-a', 'user-1'), false);
 });
 
+test('stores: token refresh without site_id keeps the existing site_id', async () => {
+    setupDb();
+    await setStore(session('inst-a'));
+    const withoutSite: SessionProps = {
+        ...session('inst-a', 'tok-b'),
+        site_id: undefined,
+        meta_site_id: undefined,
+    };
+    await setStore(withoutSite);
+    const row = await getStore('inst-a');
+    assert.equal(row?.access_token, 'tok-b');
+    assert.equal(row?.site_id, 'site-1');
+});
+
 test('stores: requireToken throws without access token', async () => {
     setupDb();
     await assert.rejects(setStore(session('inst-a', ''), { requireToken: true }), /access token/);
