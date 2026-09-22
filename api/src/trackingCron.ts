@@ -5,10 +5,18 @@ import {
     pickTrackingRequestNumbers,
     syncShipmentTracking,
 } from '@thai-nexus/shared';
+import { backfillAllStoresSelectedShipping } from './wix/backfillShipping.js';
 import { getValidAccessToken } from './wix/tokens.js';
 import { pushTrackingToWixOrder } from './wix/trackingPush.js';
 
 export async function runHourlyTrackingSync(): Promise<{ stores: number; synced: number }> {
+    await backfillAllStoresSelectedShipping().catch((err) => {
+        console.warn(
+            '[shipping-backfill]',
+            err instanceof Error ? err.message : err
+        );
+    });
+
     const instanceIds = await listInstanceIds();
     let synced = 0;
 

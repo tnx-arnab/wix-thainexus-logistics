@@ -61,6 +61,19 @@ export async function saveOrderShipments(record: OrderShipmentRecord): Promise<v
 }
 
 /** Flatten webhook-persisted shipment refs for dashboard fallback/merge. */
+export async function listOrderShipmentRecords(instanceId: string): Promise<OrderShipmentRecord[]> {
+    const rows = await all<{ data: string }>(
+        `SELECT data FROM order_shipments WHERE instance_id = ? ORDER BY created_at DESC`,
+        instanceId
+    );
+    const records: OrderShipmentRecord[] = [];
+    for (const row of rows) {
+        const record = parseJson<OrderShipmentRecord | null>(row.data, null);
+        if (record) records.push(record);
+    }
+    return records;
+}
+
 export async function listStoredOrderShipments(instanceId: string): Promise<ShipmentSummary[]> {
     const rows = await all<{ data: string; created_at: string; order_id: string }>(
         `SELECT data, created_at, order_id FROM order_shipments

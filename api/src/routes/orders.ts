@@ -3,10 +3,17 @@ import {
     getOrderShipments,
     isOrderShipmentRecordComplete,
     listInstallLogs,
+    saveOrderShipments,
 } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
 import { searchRecentOrders } from '../wix/ordersApi.js';
-import { normalizeOrderWebhookBody, processOrderWebhook } from '../wix/orderWebhook.js';
+import {
+    applySelectedShipping,
+    extractSelectedShipping,
+    normalizeOrderWebhookBody,
+    processOrderWebhook,
+    selectedShippingMissing,
+} from '../wix/orderWebhook.js';
 import { getValidAccessToken } from '../wix/tokens.js';
 
 const router = Router();
@@ -89,6 +96,18 @@ router.post('/sync-recent', async (req, res) => {
 
             const existing = await getOrderShipments(session.instanceId, orderId);
             if (existing && isOrderShipmentRecordComplete(existing)) {
+                const selected = extractSelectedShipping(payload);
+                if (selectedShippingMissing(existing) && !selectedShippingMissing(selected)) {
+                    await saveOrderShipments(applySelectedShipping(existing, selected));
+                    results.push({
+                        orderId,
+                        number: String(order.number || order.orderNumber || ''),
+                        paymentStatus: paymentStatus || 'PAID',
+                        ok: true,
+                        reason: 'shipping-backfilled',
+                    });
+                    continue;
+                }
                 results.push({
                     orderId,
                     number: String(order.number || order.orderNumber || ''),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOrderWebhookBody, extractShippingMethod, extractSelectedShipping, mapOrderLineItems, extractConsignee } from './orderWebhook.js';
+import { normalizeOrderWebhookBody, extractShippingMethod, extractSelectedShipping, mapOrderLineItems, extractConsignee, needsOrderHydration, selectedShippingMissing, applySelectedShipping } from './orderWebhook.js';
 
 test('order created (COD) allows NOT_PAID and unwraps createdEvent.entity', () => {
     const result = normalizeOrderWebhookBody({
@@ -189,4 +189,56 @@ test('extractSelectedShipping falls back to priceSummary.shipping', () => {
     assert.equal(selected.shipping_amount, 99.5);
     assert.equal(selected.shipping_currency, 'THB');
     assert.equal(selected.selected_courier, 'prime_ddp');
+});
+
+test('needsOrderHydration when email exists but selected shipping does not', () => {
+    const payload = {
+        order: {
+            buyerInfo: { email: 'buyer@example.com' },
+            shippingInfo: {
+                title: 'Flex DAP',
+                code: 'flex_dap',
+                logistics: {
+                    shippingDestination: {
+                        contactDetails: { firstName: 'A', lastName: 'B', phone: '1' },
+                        address: { addressLine: 'x', city: 'Singapore', country: 'SG' },
+                    },
+                },
+            },
+        },
+    };
+    assert.equal(needsOrderHydration(payload), true);
+
+    const withCost = {
+        order: {
+            ...(payload.order as Record<string, unknown>),
+            currency: 'THB',
+            shippingInfo: {
+                ...(payload.order as { shippingInfo: Record<string, unknown> }).shippingInfo,
+                cost: { price: { amount: '240', currency: 'THB' } },
+            },
+        },
+    };
+    assert.equal(needsOrderHydration(withCost), false);
+    assert.equal(selectedShippingMissing(extractSelectedShipping(withCost)), false);
+});
+
+test('applySelectedShipping fills missing checkout rate onto an existing record', () => {
+    const next = applySelectedShipping(
+        {
+            orderId: 'o1',
+            instanceId: 'i1',
+            requestNumbers: ['SR-1'],
+            shipments: [],
+            createdAt: '2026-09-01T00:00:00.000Z',
+        },
+        {
+            shipping_amount: 240,
+            shipping_currency: 'THB',
+            selected_courier: 'flex_dap',
+            selected_courier_title: 'Flex DAP',
+        }
+    );
+    assert.equal(next.shipping_amount, 240);
+    assert.equal(next.selected_courier, 'flex_dap');
 });

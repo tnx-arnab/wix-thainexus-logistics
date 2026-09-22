@@ -249,6 +249,32 @@ export function extractSelectedShipping(payload: Record<string, unknown>): {
     };
 }
 
+export function selectedShippingMissing(record: {
+    shipping_amount?: number | null;
+}): boolean {
+    return record.shipping_amount == null || !(record.shipping_amount > 0);
+}
+
+export function applySelectedShipping(
+    record: OrderShipmentRecord,
+    selected: ReturnType<typeof extractSelectedShipping>
+): OrderShipmentRecord {
+    return {
+        ...record,
+        shipping_amount: selected.shipping_amount ?? record.shipping_amount ?? null,
+        shipping_currency: selected.shipping_currency ?? record.shipping_currency ?? null,
+        selected_courier: selected.selected_courier ?? record.selected_courier ?? null,
+        selected_courier_title:
+            selected.selected_courier_title ?? record.selected_courier_title ?? null,
+    };
+}
+
+/** Fetch the full Wix ecom order when checkout shipping or consignee email is missing. */
+export function needsOrderHydration(payload: Record<string, unknown>): boolean {
+    if (!extractConsignee(payload).email) return true;
+    return selectedShippingMissing(extractSelectedShipping(payload));
+}
+
 export function extractShippingMethod(payload: Record<string, unknown>): {
     title?: string;
     code?: string;
@@ -393,7 +419,7 @@ async function hydrateOrderFromWixApi(
     instanceId: string,
     payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-    if (extractConsignee(payload).email) return payload;
+    if (!needsOrderHydration(payload)) return payload;
     const orderId = extractOrderId(payload);
     if (!orderId) return payload;
 
@@ -426,8 +452,16 @@ export async function processOrderWebhook(
         return { ok: false, reason: 'missing-order-id' };
     }
 
+    payload = await hydrateOrderFromWixApi(instanceId, payload);
+
     let shipmentRecord = await getOrderShipments(instanceId, orderId);
     if (shipmentRecord && isOrderShipmentRecordComplete(shipmentRecord)) {
+        if (selectedShippingMissing(shipmentRecord)) {
+            const selected = extractSelectedShipping(payload);
+            if (!selectedShippingMissing(selected)) {
+                await saveOrderShipments(applySelectedShipping(shipmentRecord, selected));
+            }
+        }
         return { ok: false, reason: 'already-created' };
     }
     if (shipmentRecord && shipmentRecord.complete === false) {
@@ -488,7 +522,7 @@ export async function processOrderWebhook(
     }
 
     const serviceId = resolveShipmentServiceId(method.code, method.title, services);
-    const orderPayload = await hydrateOrderFromWixApi(instanceId, payload);
+    const orderPayload = payload;
 
     let items = mapOrderLineItems(orderPayload);
     const productIds = [

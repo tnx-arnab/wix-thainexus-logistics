@@ -21,6 +21,7 @@ import {
 import {
     getOrderShipments,
     isOrderShipmentRecordComplete,
+    listOrderShipmentRecords,
     listStoredOrderShipments,
     saveOrderShipments,
 } from './orderShipments.js';
@@ -239,6 +240,9 @@ test('order shipments: round-trip and list', async () => {
     assert.equal(isOrderShipmentRecordComplete(record!), true);
     const list = await listStoredOrderShipments('inst-a');
     assert.equal(list[0]?.request_number, 'RN1');
+    const records = await listOrderShipmentRecords('inst-a');
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.orderId, 'ord-1');
 });
 
 test('logs: kind filters and debug off', async () => {
