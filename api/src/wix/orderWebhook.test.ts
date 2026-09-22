@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOrderWebhookBody, extractShippingMethod, mapOrderLineItems, extractConsignee } from './orderWebhook.js';
+import { normalizeOrderWebhookBody, extractShippingMethod, extractSelectedShipping, mapOrderLineItems, extractConsignee } from './orderWebhook.js';
 
 test('order created (COD) allows NOT_PAID and unwraps createdEvent.entity', () => {
     const result = normalizeOrderWebhookBody({
@@ -158,4 +158,35 @@ test('extractConsignee reads buyer and billing emails', () => {
         },
     });
     assert.equal(fromBilling.email, 'bill@shop.com');
+});
+
+test('extractSelectedShipping reads cost.price and courier from shippingInfo', () => {
+    const selected = extractSelectedShipping({
+        order: {
+            currency: 'THB',
+            shippingInfo: {
+                title: 'Flex DAP',
+                code: 'flex_dap',
+                cost: { price: { amount: '240.00', currency: 'THB' } },
+            },
+        },
+    });
+
+    assert.equal(selected.shipping_amount, 240);
+    assert.equal(selected.shipping_currency, 'THB');
+    assert.equal(selected.selected_courier, 'flex_dap');
+    assert.equal(selected.selected_courier_title, 'Flex DAP');
+});
+
+test('extractSelectedShipping falls back to priceSummary.shipping', () => {
+    const selected = extractSelectedShipping({
+        order: {
+            priceSummary: { shipping: { amount: '99.5' }, currency: 'THB' },
+            shippingInfo: { title: 'Prime DDP', code: 'prime_ddp' },
+        },
+    });
+
+    assert.equal(selected.shipping_amount, 99.5);
+    assert.equal(selected.shipping_currency, 'THB');
+    assert.equal(selected.selected_courier, 'prime_ddp');
 });

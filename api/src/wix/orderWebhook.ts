@@ -187,6 +187,68 @@ function extractOrderId(payload: Record<string, unknown>): string | null {
     return id != null ? String(id) : null;
 }
 
+function moneyAmount(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+    if (typeof value === 'string') {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    if (typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        return moneyAmount(obj.amount ?? obj.price ?? obj.value);
+    }
+    return null;
+}
+
+function moneyCurrency(value: unknown): string | null {
+    if (!value || typeof value !== 'object') return null;
+    const code = String((value as Record<string, unknown>).currency ?? '').trim();
+    return code || null;
+}
+
+/** Selected checkout shipping on a Wix order (not quoted alternatives). */
+export function extractSelectedShipping(payload: Record<string, unknown>): {
+    shipping_amount: number | null;
+    shipping_currency: string | null;
+    selected_courier: string | null;
+    selected_courier_title: string | null;
+} {
+    const order = orderFromPayload(payload);
+    const method = extractShippingMethod(payload);
+    const shippingInfo =
+        (order.shippingInfo as Record<string, unknown>) ||
+        (order.shipping_info as Record<string, unknown>) ||
+        {};
+    const cost = (shippingInfo.cost as Record<string, unknown>) || {};
+    const priceSummary =
+        (order.priceSummary as Record<string, unknown>) ||
+        (order.price_summary as Record<string, unknown>) ||
+        {};
+
+    const amount =
+        moneyAmount(cost.price) ??
+        moneyAmount(cost.totalPriceAfterTax) ??
+        moneyAmount(shippingInfo.cost) ??
+        moneyAmount(priceSummary.shipping);
+
+    const currency =
+        moneyCurrency(cost.price) ??
+        moneyCurrency(cost.totalPriceAfterTax) ??
+        moneyCurrency(priceSummary.shipping) ??
+        (typeof order.currency === 'string' && order.currency.trim() ? order.currency.trim() : null) ??
+        (typeof priceSummary.currency === 'string' && priceSummary.currency.trim()
+            ? priceSummary.currency.trim()
+            : null);
+
+    return {
+        shipping_amount: amount != null ? Math.round(amount * 100) / 100 : null,
+        shipping_currency: currency,
+        selected_courier: method.code || null,
+        selected_courier_title: method.title || null,
+    };
+}
+
 export function extractShippingMethod(payload: Record<string, unknown>): {
     title?: string;
     code?: string;
@@ -389,6 +451,7 @@ export async function processOrderWebhook(
             complete: false,
             expectedBoxCount: 0,
             createdAt: new Date().toISOString(),
+            ...extractSelectedShipping(payload),
         });
         shipmentRecord = await getOrderShipments(instanceId, orderId);
     }
@@ -528,6 +591,7 @@ export async function processOrderWebhook(
         const complete =
             requestNumbers.length >= result.expectedBoxCount && result.errors.length === 0;
 
+        const selected = extractSelectedShipping(orderPayload);
         const record: OrderShipmentRecord = {
             orderId,
             instanceId,
@@ -538,6 +602,11 @@ export async function processOrderWebhook(
             expectedBoxCount: result.expectedBoxCount,
             complete,
             createdAt: shipmentRecord?.createdAt || new Date().toISOString(),
+            shipping_amount: selected.shipping_amount ?? shipmentRecord?.shipping_amount ?? null,
+            shipping_currency: selected.shipping_currency ?? shipmentRecord?.shipping_currency ?? null,
+            selected_courier: selected.selected_courier ?? shipmentRecord?.selected_courier ?? null,
+            selected_courier_title:
+                selected.selected_courier_title ?? shipmentRecord?.selected_courier_title ?? null,
         };
         await saveOrderShipments(record);
 

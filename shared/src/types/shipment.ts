@@ -72,4 +72,9 @@ export interface OrderShipmentRecord {
     /** True when every expected box has a Thai Nexus request number. */
     complete?: boolean;
     createdAt: string;
+    /** Selected checkout shipping amount (not quoted alternatives). */
+    shipping_amount?: number | null;
+    shipping_currency?: string | null;
+    selected_courier?: string | null;
+    selected_courier_title?: string | null;
 }
