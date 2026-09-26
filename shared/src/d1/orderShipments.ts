@@ -97,6 +97,8 @@ export async function listStoredOrderShipments(instanceId: string): Promise<Ship
                 request_number: shipment.request_number,
                 status: shipment.status,
                 created_at: createdAt,
+                api_price_thb: shipment.api_price_thb ?? null,
+                payment_status: shipment.payment_status,
                 data: shipment.tnx_tracking_number
                     ? { tnx_tracking_number: shipment.tnx_tracking_number }
                     : undefined,

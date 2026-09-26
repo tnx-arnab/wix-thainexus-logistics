@@ -20,6 +20,12 @@ interface __BaseEnv_Env {
 	THAI_NEXUS_SHIPMENT_TIMEOUT_MS: string;
 	NODE_ENV: string;
 	DEBUG_MODE: string;
+	STRIPE_SECRET_KEY: string;
+	STRIPE_PUBLISHABLE_KEY: string;
+	STRIPE_SECRET_KEY_TEST: string;
+	STRIPE_PUBLISHABLE_KEY_TEST: string;
+	STRIPE_WEBHOOK_SECRET: string;
+	STRIPE_WEBHOOK_SECRET_TEST: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
@@ -32,7 +38,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SPI_DEADLINE_MS" | "WIX_SPI_FAST_MS" | "CLOUDFLARE_API_TOKEN" | "CLOUDFLARE_ACCOUNT_ID" | "APP_URL" | "AUTH_CALLBACK" | "WIX_APP_ID" | "WIX_APP_SECRET" | "WIX_PUBLIC_KEY" | "JWT_KEY" | "ENCRYPTION_KEY" | "THAI_NEXUS_FUNCTIONS_URL" | "THAI_NEXUS_TIMEOUT_MS" | "THAI_NEXUS_SHIPMENT_TIMEOUT_MS" | "NODE_ENV" | "DEBUG_MODE">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SPI_DEADLINE_MS" | "WIX_SPI_FAST_MS" | "CLOUDFLARE_API_TOKEN" | "CLOUDFLARE_ACCOUNT_ID" | "APP_URL" | "AUTH_CALLBACK" | "WIX_APP_ID" | "WIX_APP_SECRET" | "WIX_PUBLIC_KEY" | "JWT_KEY" | "ENCRYPTION_KEY" | "THAI_NEXUS_FUNCTIONS_URL" | "THAI_NEXUS_TIMEOUT_MS" | "THAI_NEXUS_SHIPMENT_TIMEOUT_MS" | "NODE_ENV" | "DEBUG_MODE" | "STRIPE_SECRET_KEY" | "STRIPE_PUBLISHABLE_KEY" | "STRIPE_SECRET_KEY_TEST" | "STRIPE_PUBLISHABLE_KEY_TEST" | "STRIPE_WEBHOOK_SECRET" | "STRIPE_WEBHOOK_SECRET_TEST">> {}
 }
 
 // Begin runtime types

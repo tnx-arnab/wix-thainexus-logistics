@@ -15,6 +15,7 @@ export * from './thaiNexus/rates.js';
 export * from './thaiNexus/shippingProvider.js';
 export * from './types/shipment.js';
 export * from './d1/orderShipments.js';
+export * from './d1/checkoutBoxQuotes.js';
 export * from './thaiNexus/shipments.js';
 export * from './types/debug.js';
 export * from './d1/debugLog.js';

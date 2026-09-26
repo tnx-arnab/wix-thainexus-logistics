@@ -23,6 +23,7 @@ import {
 } from './shippingProvider.js';
 import { mergeShippingEligibleFlags, rateItemCatalogIds, validateRateRequest } from '../rateEligibility.js';
 import { filterCheckoutQuotes, quoteCoverageIds } from '../serviceCoverage.js';
+import { saveCheckoutBoxQuotes } from '../d1/checkoutBoxQuotes.js';
 import { getApiToken, getConfig } from './store.js';
 import { sanitizeProductWeightUnit } from '../validation.js';
 
@@ -256,6 +257,39 @@ export async function calculateRates(
 
     const aggregated = mergeQuotes(boxQuoteResults);
     const boxCount = packing.boxes.length;
+
+    try {
+        await saveCheckoutBoxQuotes(storeId, {
+            country: destinationCountry,
+            postcode: dest.zip || '',
+            city: dest.city || '',
+            boxes: packing.boxes.map((box, index) => {
+                const pricesThb: Record<string, number> = {};
+                for (const quote of boxQuoteResults[index] || []) {
+                    const key = quote.courier_name || quote.display_name;
+                    const thb = roundMoney(Number(quote.final_price_thb) || 0);
+                    if (!key || thb <= 0) continue;
+                    for (const id of quoteCoverageIds(key, quote.display_name || key)) {
+                        pricesThb[id] = thb;
+                    }
+                }
+                return {
+                    index,
+                    length: box.length,
+                    width: box.width,
+                    height: box.height,
+                    weight: box.weight,
+                    isDocument: box.isDocument,
+                    pricesThb,
+                };
+            }),
+        });
+    } catch (err) {
+        console.warn(
+            '[rates] raw box quote save skipped',
+            err instanceof Error ? err.message : err
+        );
+    }
     const targetCurrency =
         body.base_options?.currency_code?.toUpperCase() ||
         items[0]?.discounted_price?.currency?.toUpperCase() ||

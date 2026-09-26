@@ -137,6 +137,7 @@ export async function redactInstanceData(instanceId: string): Promise<void> {
     const tables = [
         'product_flags',
         'order_shipments',
+        'checkout_box_quotes',
         'debug_logs',
         'install_logs',
         'thai_nexus_config',

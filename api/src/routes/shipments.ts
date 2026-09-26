@@ -40,7 +40,18 @@ router.get('/:requestNumber', async (req, res) => {
 
     try {
         const detail = await getShipment(session.instanceId, req.params.requestNumber);
-        return res.json(detail);
+        const record = await findOrderShipmentByRequestNumber(
+            session.instanceId,
+            req.params.requestNumber
+        );
+        const row = record?.shipments?.find(
+            (item) => item.request_number === req.params.requestNumber
+        );
+        return res.json({
+            ...detail,
+            api_price_thb: row?.api_price_thb ?? null,
+            payment_status: row?.payment_status || (row?.api_price_thb ? 'unpaid' : undefined),
+        });
     } catch (err) {
         return res.status(500).json({
             message: err instanceof Error ? err.message : 'Failed to load shipment details',

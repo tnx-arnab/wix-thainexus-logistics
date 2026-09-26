@@ -17,6 +17,8 @@ import setupRouter from './routes/setup.js';
 import ordersRouter from './routes/orders.js';
 import webhooksRouter from './routes/webhooks.js';
 import billingRouter from './routes/billing.js';
+import stripeWebhookRouter from './routes/stripeWebhook.js';
+import { rawBodyMiddleware } from './bodyMiddleware.js';
 
 export type CreateAppOptions = {
     /** Serve admin/dist (local Node). Cloudflare uses the ASSETS binding instead. */
@@ -70,6 +72,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
         })
     );
     app.use('/api/webhooks', wixWebhookBodyMiddleware(), webhooksRouter);
+    app.use('/api/billing/stripe-webhook', rawBodyMiddleware(), stripeWebhookRouter);
     app.use(shippingRatesRouter);
     app.use(jsonBodyMiddleware());
 

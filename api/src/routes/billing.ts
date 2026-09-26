@@ -7,9 +7,12 @@ import {
     WixBillingEventInput,
     WixBillingEventType,
     DEFAULT_WIX_SHARE_RATE,
+    shipmentChargeSatang,
 } from '../wix/billingEvents.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
 import { clientErrorMessage } from '../httpSecurity.js';
+import { findOrderShipmentByRequestNumber, saveOrderShipments } from '@thai-nexus/shared';
+import { createShipmentCheckoutSession, getStripe } from '../stripe/checkout.js';
 
 const router = Router();
 
@@ -109,6 +112,91 @@ router.post('/events', async (req: Request, res: Response) => {
         return res.status(500).json({
             ok: false,
             message: clientErrorMessage(err, 'Failed to process billing event request'),
+        });
+    }
+});
+
+/**
+ * Start a Stripe Checkout for one shipment. Amount is the stored raw API price in THB.
+ */
+router.post('/checkout', async (req: Request, res: Response) => {
+    const session = await getSession(req);
+    if (!session) {
+        return res.status(401).json({ ok: false, message: 'Session expired. Reopen from Wix Dashboard Apps.' });
+    }
+
+    const requestNumber = String((req.body || {}).request_number || (req.body || {}).requestNumber || '').trim();
+    if (!requestNumber) {
+        return res.status(400).json({ ok: false, message: 'Missing request_number.' });
+    }
+
+    const record = await findOrderShipmentByRequestNumber(session.instanceId, requestNumber);
+    const row = record?.shipments?.find((item) => item.request_number === requestNumber);
+    if (!record || !row) {
+        return res.status(404).json({ ok: false, message: 'Shipment was not found.' });
+    }
+    if (row.payment_status === 'paid') {
+        return res.status(409).json({ ok: false, message: 'This shipment is already paid.' });
+    }
+
+    const satang = shipmentChargeSatang(row.api_price_thb);
+    if (satang == null) {
+        return res.status(409).json({
+            ok: false,
+            message: 'Raw API price was not captured at checkout for this shipment.',
+        });
+    }
+
+    try {
+        const stripe = getStripe();
+        if (row.stripe_checkout_session_id) {
+            const existing = await stripe.checkout.sessions.retrieve(row.stripe_checkout_session_id);
+            if (existing.payment_status === 'paid' || existing.status === 'complete') {
+                if (existing.payment_status === 'paid') {
+                    const { recordPaidCheckoutSession } = await import('../stripe/checkout.js');
+                    await recordPaidCheckoutSession(existing);
+                }
+                return res.status(409).json({
+                    ok: false,
+                    message: existing.payment_status === 'paid'
+                        ? 'This shipment is already paid.'
+                        : 'Payment is still processing.',
+                });
+            }
+            if (existing.status === 'open' && existing.url && existing.amount_total === satang) {
+                return res.json({ ok: true, url: existing.url });
+            }
+            if (existing.status === 'open') {
+                await stripe.checkout.sessions.expire(existing.id).catch(() => undefined);
+            }
+        }
+
+        const idempotencyKey = `tnx_${session.instanceId}_${requestNumber}_${row.stripe_checkout_session_id || 'new'}`.slice(0, 255);
+        const created = await createShipmentCheckoutSession({
+            instanceId: session.instanceId,
+            requestNumber,
+            orderId: record.orderId,
+            apiPriceThb: row.api_price_thb as number,
+            idempotencyKey,
+        });
+        if (!created.url) {
+            return res.status(502).json({ ok: false, message: 'Stripe did not return a payment link.' });
+        }
+
+        await saveOrderShipments({
+            ...record,
+            shipments: (record.shipments || []).map((item) =>
+                item.request_number === requestNumber
+                    ? { ...item, stripe_checkout_session_id: created.id, payment_status: item.payment_status || 'unpaid' }
+                    : item
+            ),
+        });
+
+        return res.json({ ok: true, url: created.url });
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            message: clientErrorMessage(err, 'Could not start payment'),
         });
     }
 });

@@ -35,6 +35,34 @@ export interface WixBillingEventResponse {
 const WIX_BILLING_EVENT_URL = 'https://www.wixapis.com/apps/v1/billing-event';
 export const DEFAULT_WIX_SHARE_RATE = 0.20; // 20% revenue share on profit margin (net revenue)
 
+/**
+ * Merchant pays the raw Thai Nexus API price. Gross and net are that charge.
+ * The shop's checkout markup stays with the shop and is not app revenue.
+ * Wix share stays 20% of net via calculateWixRevenueShare.
+ */
+export function billingEventForShipmentCharge(input: {
+    apiPriceThb: number;
+    requestNumber: string;
+    orderId?: string;
+    paymentIntentId?: string;
+}): WixBillingEventInput {
+    return {
+        billing_type: 'CHARGE',
+        gross_revenue: input.apiPriceThb,
+        net_revenue: input.apiPriceThb,
+        description: `Thai Nexus shipment ${input.requestNumber}`,
+        order_id: input.orderId,
+        transaction_id: input.paymentIntentId,
+        external_id: input.requestNumber,
+    };
+}
+
+/** Stripe satang for a raw THB API price. Ignores checkout shipping totals. */
+export function shipmentChargeSatang(apiPriceThb: number | null | undefined): number | null {
+    if (apiPriceThb == null || !Number.isFinite(apiPriceThb) || apiPriceThb <= 0) return null;
+    return Math.round(apiPriceThb * 100);
+}
+
 /** Format a number or string to 2 decimal places (non-negative magnitude). */
 export function formatCurrencyAmount(amount: string | number): string {
     const num = typeof amount === 'number' ? amount : parseFloat(String(amount));

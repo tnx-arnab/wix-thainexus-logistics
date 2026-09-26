@@ -1,5 +1,6 @@
 import { shipmentCrud, apiSuggestHsCode } from './client.js';
 import { getApiToken, getConfig } from './store.js';
+import { consumeCheckoutBoxQuote, findCheckoutBoxQuotes, rawPriceForService } from '../d1/checkoutBoxQuotes.js';
 import {
     findOrderShipmentByRequestNumber,
     listStoredOrderShipments,
@@ -201,6 +202,8 @@ export interface CreateOrderShipmentsInput {
     boxedProductFlags?: Record<string, boolean>;
     /** Thai Nexus service id from checkout, e.g. prime_ddp. */
     serviceId?: string;
+    /** Checkout code and title, used when serviceId does not match a stored quote key. */
+    serviceLabels?: string[];
     /** Resume after a partial webhook run - skip boxes already created. */
     startBoxIndex?: number;
 }
@@ -276,7 +279,14 @@ export async function fillMissingItemHsCodes(
 export async function createShipmentsForOrder(
     input: CreateOrderShipmentsInput
 ): Promise<{
-    created: Array<{ request_number: string; status?: string; id?: string | number }>;
+    created: Array<{
+        request_number: string;
+        status?: string;
+        id?: string | number;
+        box_index: number;
+        api_price_thb: number | null;
+        payment_status: 'unpaid';
+    }>;
     packedBoxes: Array<{ length: number; width: number; height: number; weight: number }>;
     errors: string[];
     expectedBoxCount: number;
@@ -299,12 +309,25 @@ export async function createShipmentsForOrder(
 
     const shipperAddress = cleanAddress(input.shipper);
     const consigneeAddress = cleanAddress(input.consignee);
-    const created: Array<{ request_number: string; status?: string; id?: string | number }> =
-        [];
+    const quoteSnapshot = await findCheckoutBoxQuotes(input.instanceId, {
+        country: input.consignee.country,
+        postcode: input.consignee.postalCode,
+        city: input.consignee.city,
+        boxes: packing.boxes,
+    }).catch(() => null);
+    const created: Array<{
+        request_number: string;
+        status?: string;
+        id?: string | number;
+        box_index: number;
+        api_price_thb: number | null;
+        payment_status: 'unpaid';
+    }> = [];
     const errors: string[] = [];
 
     const startBoxIndex = Math.max(0, input.startBoxIndex ?? 0);
     const serviceId = input.serviceId?.trim();
+    const serviceLabels = input.serviceLabels || [];
 
     for (let index = startBoxIndex; index < packing.boxes.length; index++) {
         const box = packing.boxes[index];
@@ -354,10 +377,14 @@ export async function createShipmentsForOrder(
             };
 
             if (row.request_number) {
+                const quoted = quoteSnapshot?.boxes.find((entry) => entry.index === index);
                 created.push({
                     request_number: row.request_number,
                     status: row.status,
                     id: row.id,
+                    box_index: index,
+                    api_price_thb: rawPriceForService(quoted?.pricesThb, serviceId, serviceLabels),
+                    payment_status: 'unpaid' as const,
                 });
             } else {
                 errors.push(`Box ${index + 1}: Thai Nexus did not return a request_number`);
@@ -367,6 +394,12 @@ export async function createShipmentsForOrder(
                 `Box ${index + 1}: ${err instanceof Error ? err.message : 'shipment create failed'}`
             );
         }
+    }
+
+    const finished =
+        errors.length === 0 && startBoxIndex + created.length === packing.boxes.length;
+    if (finished && quoteSnapshot?.id) {
+        await consumeCheckoutBoxQuote(quoteSnapshot.id).catch(() => undefined);
     }
 
     return {

@@ -36,6 +36,9 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Stripe keys are Worker secrets, not plaintext vars:
+  // STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_SECRET_KEY_TEST,
+  // STRIPE_PUBLISHABLE_KEY_TEST, STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_TEST.
   "vars": {
     "NODE_ENV": "production",
     "DEBUG_MODE": "false",

@@ -19,6 +19,7 @@ function skipRateLimit(req: Request): boolean {
     const path = req.path || '';
     if (req.method === 'GET' && (path === '/health' || path === '/')) return true;
     if (path.startsWith('/api/webhooks')) return true;
+    if (path.startsWith('/api/billing/stripe-webhook')) return true;
     if (path.startsWith('/v1/')) return true;
     if (path.startsWith('/plugins-and-webhooks')) return true;
     if (path.includes('getRates') || path.includes('getShippingRates')) return true;

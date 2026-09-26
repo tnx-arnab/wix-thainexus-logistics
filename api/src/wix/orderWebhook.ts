@@ -611,6 +611,7 @@ export async function processOrderWebhook(
             documentFlags,
             boxedProductFlags: boxedFlags,
             serviceId,
+            serviceLabels: [method.code, method.title].filter((value): value is string => Boolean(value)),
             startBoxIndex,
         });
 

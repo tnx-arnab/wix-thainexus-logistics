@@ -4,6 +4,7 @@ import { bindWorkerDb, clearWorkerDb } from '../d1/client.js';
 import { createMigratedMemoryD1 } from '../d1/memoryD1.js';
 import { saveConfig } from './store.js';
 import { calculateRates } from './rates.js';
+import { findCheckoutBoxQuotes } from '../d1/checkoutBoxQuotes.js';
 import type { BcRateRequest, CommissionRule, ShipperProfile, ShippingBox } from '../types/thaiNexus.js';
 
 const INSTANCE_ID = '7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4';
@@ -13,6 +14,13 @@ CREATE TABLE IF NOT EXISTS thai_nexus_config (
     instance_id TEXT PRIMARY KEY,
     data TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS checkout_box_quotes (
+    id TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
 
@@ -195,6 +203,14 @@ describe('calculateRates checkout uses Thai Nexus API price', () => {
                 const result = await calculateRates(rateRequest());
                 // 100 + 10 = 110; not 100 * 1.25 + 10 = 135
                 assert.equal(quoteAmount(result, 'prime_ddp'), 110);
+                const stored = await findCheckoutBoxQuotes(INSTANCE_ID, {
+                    country: 'US',
+                    postcode: '10110',
+                    city: 'Bangkok',
+                    boxes: [{ length: 40, width: 30, height: 20, weight: 0.35, isDocument: false }],
+                });
+                assert.equal(stored?.boxes.length, 1);
+                assert.equal(stored?.boxes[0]?.pricesThb.prime_ddp, 100);
             }
         );
     });

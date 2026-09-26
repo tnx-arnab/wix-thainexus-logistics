@@ -158,6 +158,8 @@ export interface ShipmentSummary {
     volumetric_weight_kg?: number;
     submitted_date?: string;
     created_at?: string;
+    api_price_thb?: number | null;
+    payment_status?: 'unpaid' | 'paid';
 }
 
 export interface ShipmentAddress {
@@ -181,6 +183,8 @@ export interface ShipmentDetail extends ShipmentSummary {
     shipment_description?: string;
     tnx_tracking_number?: string;
     tracking_url?: string;
+    api_price_thb?: number | null;
+    payment_status?: 'unpaid' | 'paid';
 }
 
 export interface ShipmentListResponse {

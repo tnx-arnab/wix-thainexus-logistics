@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+    billingEventForShipmentCharge,
     buildWixBillingEventPayload,
+    shipmentChargeSatang,
     calculateWixRevenueShare,
     formatCurrencyAmount,
     isValidNumericAmount,
@@ -11,6 +13,24 @@ import {
 import { createApp } from '../app.js';
 import { bindWorkerDb, clearWorkerDb } from '@thai-nexus/shared';
 import { createMigratedMemoryD1 } from '../../../shared/src/d1/memoryD1.js';
+
+test('shipment charge uses the raw API price in satang', () => {
+    assert.equal(shipmentChargeSatang(240.5), 24050);
+    assert.equal(shipmentChargeSatang(null), null);
+    assert.equal(shipmentChargeSatang(0), null);
+    const event = billingEventForShipmentCharge({
+        apiPriceThb: 240.5,
+        requestNumber: 'REQ-1',
+        orderId: '99',
+        paymentIntentId: 'pi_123',
+    });
+    assert.equal(event.gross_revenue, 240.5);
+    assert.equal(event.net_revenue, 240.5);
+    assert.equal(event.external_id, 'REQ-1');
+    const payload = buildWixBillingEventPayload(event);
+    assert.equal(payload.event.gross_revenue, '240.50');
+    assert.equal(payload.event.wix_share, '48.10');
+});
 
 test('formatCurrencyAmount formats strings, numbers, and negative amounts', () => {
     assert.equal(formatCurrencyAmount(100), '100.00');

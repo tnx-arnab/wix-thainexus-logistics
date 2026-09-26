@@ -12,7 +12,7 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, syncShipmentTracking } from '../lib/api';
+import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, startShipmentPayment, syncShipmentTracking } from '../lib/api';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
 function statusClass(status: string | undefined, header = false): string {
@@ -49,6 +49,7 @@ export default function ShipmentsPage() {
     const [selected, setSelected] = useState<ShipmentDetail | null>(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [paying, setPaying] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
     const [query, setQuery] = useState('');
 
@@ -126,6 +127,22 @@ export default function ShipmentsPage() {
         }
     };
 
+    const payShipment = async () => {
+        const requestNumber = selected?.request_number;
+        if (!requestNumber || paying || selected?.payment_status === 'paid') return;
+        setPaying(true);
+        setSyncMessage('');
+        try {
+            const { url } = await startShipmentPayment(requestNumber);
+            window.open(url, '_blank', 'noopener,noreferrer');
+            setSyncMessage('Stripe Checkout opened. This shipment is paid after Stripe confirms.');
+        } catch (err) {
+            setSyncMessage(err instanceof Error ? err.message : 'Could not start payment.');
+        } finally {
+            setPaying(false);
+        }
+    };
+
     const syncShipment = async () => {
         const requestNumber = selected?.request_number;
         if (!requestNumber || syncing) return;
@@ -194,6 +211,7 @@ export default function ShipmentsPage() {
                             <tr>
                                 <th className="text-left px-6 py-3">Request number</th>
                                 <th className="text-left px-6 py-3">Status</th>
+                                <th className="text-left px-6 py-3">API price</th>
                                 <th className="text-left px-6 py-3">Vol. weight</th>
                                 <th className="text-left px-6 py-3">Date</th>
                                 <th className="px-6 py-3" />
@@ -202,14 +220,14 @@ export default function ShipmentsPage() {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="py-16 text-center text-gray-500">
+                                    <td colSpan={6} className="py-16 text-center text-gray-500">
                                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
                                         <p className="mt-3">Loading shipments…</p>
                                     </td>
                                 </tr>
                             ) : errorType === 'auth' ? (
                                 <tr>
-                                    <td colSpan={5} className="py-16 text-center">
+                                    <td colSpan={6} className="py-16 text-center">
                                         <Key className="w-10 h-10 mx-auto text-secondary mb-3" />
                                         <p className="font-semibold text-gray-800">Connection required</p>
                                         <p className="text-gray-500 mt-1">
@@ -219,7 +237,7 @@ export default function ShipmentsPage() {
                                 </tr>
                             ) : visibleShipments.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="py-16 text-center text-gray-500">
+                                    <td colSpan={6} className="py-16 text-center text-gray-500">
                                         <Package className="w-10 h-10 mx-auto text-gray-300 mb-3" />
                                         <p className="font-semibold text-gray-700">No shipments yet</p>
                                         <p className="mt-1">Waiting for your first Thai Nexus order.</p>
@@ -240,6 +258,14 @@ export default function ShipmentsPage() {
                                             >
                                                 {s.status || 'Unknown'}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-700">
+                                            {s.api_price_thb != null && s.api_price_thb > 0
+                                                ? `${s.api_price_thb.toFixed(2)} THB`
+                                                : '-'}
+                                            {s.payment_status === 'paid' ? (
+                                                <span className="ml-2 text-xs text-green-700">Paid</span>
+                                            ) : null}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600">
                                             {s.volumetric_weight_kg ?? '0'} kg
@@ -344,6 +370,18 @@ export default function ShipmentsPage() {
                                     </a>
                                 ) : null}
 
+                                <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                    <p className="text-xs text-gray-500">Thai Nexus API price</p>
+                                    <p className="font-semibold text-gray-800">
+                                        {selected.api_price_thb != null && selected.api_price_thb > 0
+                                            ? `${selected.api_price_thb.toFixed(2)} THB`
+                                            : 'Not captured at checkout'}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {selected.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
+                                    </p>
+                                </div>
+
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {[
                                         { label: 'Weight', value: `${selected.actual_weight_kg ?? '-'} kg` },
@@ -377,6 +415,20 @@ export default function ShipmentsPage() {
                             {syncMessage ? (
                                 <p className="text-xs text-gray-600 mr-auto">{syncMessage}</p>
                             ) : null}
+                            <button
+                                type="button"
+                                onClick={payShipment}
+                                disabled={
+                                    paying ||
+                                    detailsLoading ||
+                                    selected.payment_status === 'paid' ||
+                                    !(selected.api_price_thb != null && selected.api_price_thb > 0)
+                                }
+                                className="tnxl-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {paying ? <Loader2 size={14} className="animate-spin" /> : null}
+                                {selected.payment_status === 'paid' ? 'Paid' : 'Pay'}
+                            </button>
                             <button
                                 type="button"
                                 onClick={syncShipment}
