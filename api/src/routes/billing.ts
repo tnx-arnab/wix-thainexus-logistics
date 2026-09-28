@@ -10,10 +10,11 @@ import {
     shipmentChargeSatang,
 } from '../wix/billingEvents.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
-import { clientErrorMessage } from '../httpSecurity.js';
-import { findOrderShipmentByRequestNumber, getStore, saveOrderShipments } from '@thai-nexus/shared';
+import { clientErrorMessage, payReturnCookieHeader, requestIsHttps } from '../httpSecurity.js';
+import { findOrderShipmentByRequestNumber, getStore, saveOrderShipments, saveStoreSiteIds } from '@thai-nexus/shared';
+import { fetchWixAppInstance } from '../wix/oauth.js';
 import { createShipmentCheckoutSession, getStripe } from '../stripe/checkout.js';
-import { shipmentPayReturnUrl } from '../stripe/checkoutReturn.js';
+import { dashboardSiteId, sameCheckoutReturn, shipmentPayReturnUrl } from '../stripe/checkoutReturn.js';
 
 const router = Router();
 
@@ -24,6 +25,30 @@ function asInstanceId(value: unknown): string | undefined {
     if (typeof value !== 'string') return undefined;
     const trimmed = value.trim();
     return INSTANCE_UUID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+async function metaSiteIdForCheckout(instanceId: string, accessToken: string): Promise<string> {
+    try {
+        const store = await getStore(instanceId);
+        const stored = dashboardSiteId(store?.meta_site_id);
+        if (stored) return stored;
+
+        const appInstance = await fetchWixAppInstance(accessToken);
+        const metaSiteId = dashboardSiteId(appInstance.metaSiteId);
+        if (metaSiteId) {
+            await saveStoreSiteIds(instanceId, {
+                siteId: appInstance.siteId,
+                metaSiteId,
+            }).catch(() => undefined);
+        }
+        return metaSiteId || '';
+    } catch {
+        return '';
+    }
+}
+
+function rememberPayReturn(req: Request, res: Response, requestNumber: string): void {
+    res.setHeader('Set-Cookie', payReturnCookieHeader(requestNumber, requestIsHttps(req)));
 }
 
 /**
@@ -149,11 +174,11 @@ router.post('/checkout', async (req: Request, res: Response) => {
     }
 
     const requestedReturn = String((req.body || {}).return_url || (req.body || {}).returnUrl || '');
-    const store = await getStore(session.instanceId);
+    const metaSiteId = await metaSiteIdForCheckout(session.instanceId, session.accessToken);
     const appUrl = (process.env.APP_URL || 'https://wix.thainexus.co.th').replace(/\/$/, '');
     const returnUrl = shipmentPayReturnUrl({
         requested: requestedReturn,
-        metaSiteId: store?.meta_site_id,
+        metaSiteId,
         appId: process.env.WIX_APP_ID,
         appUrl,
     });
@@ -178,8 +203,9 @@ router.post('/checkout', async (req: Request, res: Response) => {
                 existing.status === 'open' &&
                 existing.url &&
                 existing.amount_total === satang &&
-                existing.success_url === returnUrl
+                sameCheckoutReturn(existing.success_url, returnUrl)
             ) {
+                rememberPayReturn(req, res, requestNumber);
                 return res.json({ ok: true, url: existing.url });
             }
             if (existing.status === 'open') {
@@ -187,7 +213,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
             }
         }
 
-        const idempotencyKey = `tnx_${session.instanceId}_${requestNumber}_${row.stripe_checkout_session_id || 'new'}`.slice(0, 255);
+        const idempotencyKey = `tnx_${session.instanceId}_${requestNumber}_${row.stripe_checkout_session_id || 'new'}`.slice(0, 230);
         const created = await createShipmentCheckoutSession({
             instanceId: session.instanceId,
             requestNumber,
@@ -195,7 +221,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
             apiPriceThb: row.api_price_thb as number,
             idempotencyKey,
             returnUrl,
-            metaSiteId: store?.meta_site_id,
+            metaSiteId,
         });
         if (!created.url) {
             return res.status(502).json({ ok: false, message: 'Stripe did not return a payment link.' });
@@ -210,6 +236,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
             ),
         });
 
+        rememberPayReturn(req, res, requestNumber);
         return res.json({ ok: true, url: created.url });
     } catch (err) {
         return res.status(500).json({

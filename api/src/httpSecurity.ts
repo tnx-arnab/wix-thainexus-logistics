@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 export const MAX_BODY_BYTES = 1_048_576;
 export const BOOTSTRAP_COOKIE = 'tn_bootstrap';
+export const PAY_RETURN_COOKIE = 'tn_pay_return';
 
 const FRAME_ANCESTORS =
     "frame-ancestors 'self' https://*.wix.com https://*.wixstudio.com https://manage.wix.com https://editor.wix.com";
@@ -38,6 +39,20 @@ export function cookieValue(cookieHeader: string | undefined, name: string): str
         }
     }
     return '';
+}
+
+export function payReturnCookieHeader(requestNumber: string, secure = true): string {
+    const parts = [
+        `${PAY_RETURN_COOKIE}=${encodeURIComponent(requestNumber)}`,
+        'Path=/',
+        'Max-Age=3600',
+    ];
+    if (secure) {
+        parts.push('Secure', 'SameSite=None', 'Partitioned');
+    } else {
+        parts.push('SameSite=Lax');
+    }
+    return parts.join('; ');
 }
 
 export function bootstrapCookieHeader(value: string, maxAgeSec = 120, secure = true): string {

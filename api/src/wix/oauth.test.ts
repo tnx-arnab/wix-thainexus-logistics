@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWixAccessToken, resolveWixInstallIdentity } from './oauth.js';
+import { createWixAccessToken, fetchWixAppInstance, resolveWixInstallIdentity } from './oauth.js';
 
 const INSTANCE_ID = '7f09dd49-70c6-4c96-8c6e-cfab07d6c6d4';
 
@@ -51,6 +51,68 @@ test('resolveWixInstallIdentity uses Wix callback instanceId when token APIs omi
                 { instanceId: INSTANCE_ID }
             );
             assert.equal(identity.instanceId, INSTANCE_ID);
+        }
+    );
+});
+
+test('fetchWixAppInstance prefers metaSiteId and ignores a path injection', async () => {
+    await withMockedFetch(
+        (url) => {
+            if (url.includes('/apps/v1/instance')) {
+                return {
+                    ok: true,
+                    body: {
+                        site: {
+                            siteId: '1d04f781-0249-402a-9e51-dc3c9cb7754e',
+                            metaSiteId: '../not-a-site',
+                        },
+                    },
+                };
+            }
+            return { ok: false, body: {} };
+        },
+        async () => {
+            const appInstance = await fetchWixAppInstance('token');
+            assert.equal(appInstance.metaSiteId, '1d04f781-0249-402a-9e51-dc3c9cb7754e');
+            assert.equal(appInstance.siteId, '1d04f781-0249-402a-9e51-dc3c9cb7754e');
+        }
+    );
+});
+
+test('fetchWixAppInstance keeps an explicit dashboard metaSiteId', async () => {
+    await withMockedFetch(
+        (url) => {
+            if (url.includes('/apps/v1/instance')) {
+                return {
+                    ok: true,
+                    body: {
+                        site: {
+                            siteId: '1d04f781-0249-402a-9e51-dc3c9cb7754e',
+                            metaSiteId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+                        },
+                    },
+                };
+            }
+            return { ok: false, body: {} };
+        },
+        async () => {
+            const appInstance = await fetchWixAppInstance('token');
+            assert.equal(appInstance.metaSiteId, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+        }
+    );
+});
+
+test('fetchWixAppInstance uses site.siteId as the dashboard id', async () => {
+    await withMockedFetch(
+        (url) => {
+            if (url.includes('/apps/v1/instance')) {
+                return { ok: true, body: { site: { siteId: '1d04f781-0249-402a-9e51-dc3c9cb7754e' } } };
+            }
+            return { ok: false, body: {} };
+        },
+        async () => {
+            const appInstance = await fetchWixAppInstance('token');
+            assert.equal(appInstance.metaSiteId, '1d04f781-0249-402a-9e51-dc3c9cb7754e');
         }
     );
 });

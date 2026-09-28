@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import Stripe from 'stripe';
 import {
     billingEventForShipmentCharge,
@@ -92,7 +93,9 @@ export async function createShipmentCheckoutSession(input: {
             cancel_url: returnUrl,
             integration_identifier: checkoutIntegrationId(input.requestNumber),
         },
-        { idempotencyKey: `${input.idempotencyKey}_${returnUrl}`.slice(0, 255) }
+        {
+            idempotencyKey: `${input.idempotencyKey}_${createHash('sha256').update(returnUrl).digest('hex').slice(0, 16)}`.slice(0, 255),
+        }
     );
 
     return { id: session.id, url: session.url, returnUrl };

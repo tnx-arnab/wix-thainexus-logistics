@@ -105,6 +105,23 @@ export async function getStore(instanceId: string): Promise<StoreRow | null> {
     };
 }
 
+export async function saveStoreSiteIds(
+    instanceId: string,
+    ids: { siteId?: string; metaSiteId?: string }
+): Promise<void> {
+    await run(
+        `UPDATE stores
+         SET site_id = COALESCE(NULLIF(site_id, ''), ?),
+             meta_site_id = COALESCE(?, meta_site_id),
+             updated_at = ?
+         WHERE instance_id = ?`,
+        ids.siteId || null,
+        ids.metaSiteId || null,
+        new Date().toISOString(),
+        instanceId
+    );
+}
+
 export async function updateStoreTokens(
     instanceId: string,
     tokens: { access_token: string; refresh_token?: string; scope?: string }

@@ -4,6 +4,8 @@
  * Legacy custom auth kept as a fallback until Dev Center Custom Authentication is off.
  */
 
+import { dashboardSiteId } from '../stripe/checkoutReturn.js';
+
 export type WixTokenResponse = {
     access_token: string;
     refresh_token?: string;
@@ -214,10 +216,13 @@ export async function fetchWixAppInstance(accessToken: string): Promise<{
         if (!res.ok) return {};
         const instance = (data.instance || {}) as Record<string, unknown>;
         const site = (data.site || {}) as Record<string, unknown>;
+        const siteId = dashboardSiteId(site.siteId);
+        const metaSiteId =
+            dashboardSiteId(site.metaSiteId) || dashboardSiteId(site.meta_site_id) || siteId;
         return {
             instanceId: asInstanceId(instance.instanceId) || asInstanceId(data.instanceId),
-            siteId: typeof site.siteId === 'string' ? site.siteId : undefined,
-            metaSiteId: typeof site.metaSiteId === 'string' ? site.metaSiteId : undefined,
+            siteId,
+            metaSiteId,
         };
     } catch {
         return {};
@@ -234,9 +239,7 @@ export async function resolveWixInstallIdentity(
     query: { instanceId?: unknown; instance_id?: unknown }
 ): Promise<{ instanceId: string; siteId?: string; metaSiteId?: string }> {
     const tokenInfo = await fetchWixTokenInfo(tokens.access_token);
-    const appInstance = tokenInfo.instanceId
-        ? {}
-        : await fetchWixAppInstance(tokens.access_token);
+    const appInstance = await fetchWixAppInstance(tokens.access_token);
     const { instanceIdFromAccessToken } = await import('./tokens.js');
 
     const instanceId =
