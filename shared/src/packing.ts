@@ -149,7 +149,22 @@ function flagForItem(item: BcRateItem, flags: Record<string, boolean>): boolean 
     return catalogIds(item).some((id) => Boolean(flags[id]));
 }
 
-/** Catalog product weight → kg. Merchant unit wins over catalog unit strings. */
+/**
+ * Keep a checkout line weight as entered. Only a missing weight is filled from
+ * catalog kilograms. Never relabel a raw catalog number as kg.
+ */
+export function catalogFilledWeight(
+    current?: { units?: string; value?: number | string },
+    catalogWeightKg?: number
+): { units?: string; value: number } {
+    const value = toNum(current?.value);
+    if (value > 0) {
+        return current?.units ? { value, units: current.units } : { value };
+    }
+    return { units: 'kg', value: Number(catalogWeightKg) || 0 };
+}
+
+/** Catalog product weight → kg. An explicit kg value is already converted and is not scaled again. */
 export function productWeightToKg(
     dim?: { units?: string; value?: number | string },
     productWeightUnit: ProductWeightUnit = 'kg',
@@ -157,7 +172,13 @@ export function productWeightToKg(
 ): number {
     const value = toNum(dim?.value);
     if (!value) return fallback;
-    if (productWeightUnit === 'g') return value / 1000;
+    const units = String(dim?.units || '').trim().toLowerCase();
+    if (units === 'kg' || units === 'kgs' || units === 'kilogram' || units === 'kilograms') {
+        return value;
+    }
+    if (productWeightUnit === 'g' || units === 'g' || units === 'gram' || units === 'grams') {
+        return value / 1000;
+    }
 
     return toKg(dim, fallback);
 }

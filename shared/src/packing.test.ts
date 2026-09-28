@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { packBoxedSingleItemCart, packItems } from './packing.js';
+import { catalogFilledWeight, packBoxedSingleItemCart, packItems } from './packing.js';
 import type { BcRateItem, ShippingBox } from './types/thaiNexus.js';
 
 const merchantBox: ShippingBox = {
@@ -194,5 +194,40 @@ describe('packItems boxed integration', () => {
 
         assert.equal(packing.boxes.length, 1);
         assert.ok(packing.errors.some((e) => /missing dimensions/i.test(e)));
+    });
+
+    it('converts a raw catalog weight once when the store unit is grams', () => {
+        const packing = packItems(
+            [phoneCaseItem({ weight: { value: 2 } })],
+            [],
+            {},
+            { productWeightUnit: 'g', chargeActualWeightOnly: true }
+        );
+
+        assert.equal(packing.boxes[0]?.weight, 0.002);
+    });
+
+    it('keeps a weight that is already in kilograms', () => {
+        const packing = packItems(
+            [phoneCaseItem({ weight: { units: 'kg', value: 0.907 } })],
+            [],
+            {},
+            { productWeightUnit: 'g', chargeActualWeightOnly: true }
+        );
+
+        assert.equal(packing.boxes[0]?.weight, 0.907);
+    });
+
+    it('does not relabel a raw gram weight as kilograms when filling dimensions', () => {
+        const weight = catalogFilledWeight({ value: 2 }, 0.907);
+        const packing = packItems(
+            [phoneCaseItem({ weight })],
+            [],
+            {},
+            { productWeightUnit: 'g', chargeActualWeightOnly: true }
+        );
+
+        assert.equal(weight.units, undefined);
+        assert.equal(packing.boxes[0]?.weight, 0.002);
     });
 });

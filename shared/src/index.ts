@@ -20,6 +20,7 @@ export * from './thaiNexus/shipments.js';
 export * from './types/debug.js';
 export * from './d1/debugLog.js';
 export * from './quoteCache.js';
+export { catalogFilledWeight, productWeightToKg } from './packing.js';
 export * from './rateEligibility.js';
 export * from './boxedCustomField.js';
 export * from './hsCode.js';

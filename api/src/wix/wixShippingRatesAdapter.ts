@@ -2,6 +2,7 @@ import {
     BcRateRequest,
     BcRateResponse,
     calculateRates,
+    catalogFilledWeight,
     formatServiceDisplayName,
     getStore,
     normalizeServiceId,
@@ -79,19 +80,6 @@ export type WixShippingMetadata = {
     languages?: string[];
 };
 
-function lbToKg(lb: number): number {
-    return lb * 0.45359237;
-}
-
-function toKg(weight: number | undefined, unit?: string): number {
-    if (weight == null || !Number.isFinite(weight)) return 0;
-    const u = (unit || 'KG').toUpperCase();
-    if (u === 'LB' || u === 'LBS' || u === 'POUND' || u === 'POUNDS') {
-        return lbToKg(weight);
-    }
-    return weight;
-}
-
 function subdivisionState(subdivision?: string): string {
     if (!subdivision) return '';
     const parts = subdivision.split('-');
@@ -109,15 +97,14 @@ export function wixRequestToRateRequest(
 ): BcRateRequest {
     const dest = normalizeWixShippingDestination(request.shippingDestination);
     const currency = metadata.currency || 'THB';
-    const weightUnit = request.weightUnit || 'KG';
-
     const shippableLines = (request.lineItems || []).filter(
         (line) => line.physicalProperties?.shippable !== false
     );
 
     const items = shippableLines.map((line, idx) => {
         const phys = line.physicalProperties || {};
-        const weight = toKg(line.weight ?? phys.weight, weightUnit);
+        const rawWeight = Number(line.weight ?? phys.weight);
+        const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0;
         const length = Number(line.length ?? phys.length) || 0;
         const width = Number(line.width ?? phys.width) || 0;
         const height = Number(line.height ?? phys.height) || 0;
@@ -133,7 +120,7 @@ export function wixRequestToRateRequest(
             length: { units: 'cm', value: length },
             width: { units: 'cm', value: width },
             height: { units: 'cm', value: height },
-            weight: { units: 'kg', value: weight },
+            weight: { value: weight },
             discounted_price: { currency, amount: unitPrice },
         };
     });
@@ -193,13 +180,7 @@ export async function enrichRateRequestFromCatalog(
                 return {
                     ...item,
                     name: item.name || p.name || item.name,
-                    weight: {
-                        units: 'kg',
-                        value:
-                            item.weight?.value && item.weight.value > 0
-                                ? item.weight.value
-                                : p.weightKg || 0,
-                    },
+                    weight: catalogFilledWeight(item.weight, p.weightKg),
                     length: {
                         units: 'cm',
                         value:

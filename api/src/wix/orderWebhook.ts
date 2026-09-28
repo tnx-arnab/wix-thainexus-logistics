@@ -1,5 +1,6 @@
 import {
     apiShippingServices,
+    catalogFilledWeight,
     createShipmentsForOrder,
     getApiToken,
     getConfig,
@@ -347,7 +348,7 @@ export function mapOrderLineItems(payload: Record<string, unknown>): BcRateItem[
             length: { units: 'cm', value: Number(phys.length || line.length) || 0 },
             width: { units: 'cm', value: Number(phys.width || line.width) || 0 },
             height: { units: 'cm', value: Number(phys.height || line.height) || 0 },
-            weight: { units: 'kg', value: Number(phys.weight || line.weight) || 0 },
+            weight: { value: Number(phys.weight || line.weight) || 0 },
             discounted_price: {
                 currency: currency || 'THB',
                 amount: String(unitValue || lineUnitPriceAmount(line) || '0'),
@@ -544,13 +545,7 @@ export async function processOrderWebhook(
                 if (!p) return item;
                 return {
                     ...item,
-                    weight: {
-                        units: 'kg',
-                        value:
-                            item.weight?.value && item.weight.value > 0
-                                ? item.weight.value
-                                : p.weightKg || 0,
-                    },
+                    weight: catalogFilledWeight(item.weight, p.weightKg),
                     length: {
                         units: 'cm',
                         value:
