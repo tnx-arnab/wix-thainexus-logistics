@@ -26,7 +26,7 @@ export interface ShipmentSummary {
     created_at?: string;
     /** Raw Thai Nexus price for this box, in THB. Not the checkout shipping total. */
     api_price_thb?: number | null;
-    payment_status?: 'unpaid' | 'paid';
+    payment_status?: 'unpaid' | 'paid' | 'confirming';
     data?: Record<string, unknown>;
 }
 
@@ -64,7 +64,7 @@ export interface OrderShipmentRecord {
         box_index?: number;
         /** Raw Thai Nexus API price in THB for this box and selected service. */
         api_price_thb?: number | null;
-        payment_status?: 'unpaid' | 'paid';
+        payment_status?: 'unpaid' | 'paid' | 'confirming';
         stripe_checkout_session_id?: string | null;
         stripe_payment_intent_id?: string | null;
         paid_at?: string | null;

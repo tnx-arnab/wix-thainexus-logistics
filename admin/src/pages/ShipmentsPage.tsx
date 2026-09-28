@@ -120,6 +120,13 @@ export default function ShipmentsPage() {
         try {
             const detail = await fetchShipmentDetail(requestNumber);
             setSelected(detail);
+            setShipments((current) =>
+                current.map((item) =>
+                    item.request_number === requestNumber
+                        ? { ...item, payment_status: detail.payment_status }
+                        : item
+                )
+            );
         } catch {
             setSelected(null);
             alert('Could not load shipment details.');
@@ -158,7 +165,16 @@ export default function ShipmentsPage() {
         setSyncMessage('');
         try {
             const data = await syncShipmentTracking(requestNumber);
-            if (data.shipment) setSelected(data.shipment);
+            if (data.shipment) {
+                setSelected(data.shipment);
+                setShipments((current) =>
+                    current.map((item) =>
+                        item.request_number === requestNumber
+                            ? { ...item, payment_status: data.shipment.payment_status }
+                            : item
+                    )
+                );
+            }
             const updated = data.orders_updated ?? 0;
             const url = data.shipment ? trackingUrl(data.shipment) : '';
             setSyncMessage(
@@ -273,6 +289,8 @@ export default function ShipmentsPage() {
                                                 : '-'}
                                             {s.payment_status === 'paid' ? (
                                                 <span className="ml-2 text-xs text-green-700">Paid</span>
+                                            ) : s.payment_status === 'confirming' ? (
+                                                <span className="ml-2 text-xs text-amber-700">Awaiting approval</span>
                                             ) : null}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600">
@@ -386,7 +404,11 @@ export default function ShipmentsPage() {
                                             : 'Not captured at checkout'}
                                     </p>
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {selected.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
+                                        {selected.payment_status === 'paid'
+                                            ? 'Paid'
+                                            : selected.payment_status === 'confirming'
+                                              ? 'Awaiting approval'
+                                              : 'Unpaid'}
                                     </p>
                                 </div>
 
@@ -430,12 +452,17 @@ export default function ShipmentsPage() {
                                     paying ||
                                     detailsLoading ||
                                     selected.payment_status === 'paid' ||
+                                    selected.payment_status === 'confirming' ||
                                     !(selected.api_price_thb != null && selected.api_price_thb > 0)
                                 }
                                 className="tnxl-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
                             >
                                 {paying ? <Loader2 size={14} className="animate-spin" /> : null}
-                                {selected.payment_status === 'paid' ? 'Paid' : 'Pay'}
+                                {selected.payment_status === 'paid'
+                                    ? 'Paid'
+                                    : selected.payment_status === 'confirming'
+                                      ? 'Awaiting approval'
+                                      : 'Pay'}
                             </button>
                             <button
                                 type="button"

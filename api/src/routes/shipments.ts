@@ -3,6 +3,7 @@ import { findOrderShipmentByRequestNumber, getShipment, listShipmentsForStore, s
 import { getSession } from '../auth.js';
 import { getValidAccessToken } from '../wix/tokens.js';
 import { pushTrackingToWixOrder } from '../wix/trackingPush.js';
+import { syncWixShipmentPayment } from '../wix/shipmentPaymentSync.js';
 
 const router = Router();
 
@@ -39,7 +40,10 @@ router.get('/:requestNumber', async (req, res) => {
     }
 
     try {
-        const detail = await getShipment(session.instanceId, req.params.requestNumber);
+        const [, detail] = await Promise.all([
+            syncWixShipmentPayment(session.instanceId, req.params.requestNumber).catch(() => undefined),
+            getShipment(session.instanceId, req.params.requestNumber),
+        ]);
         const record = await findOrderShipmentByRequestNumber(
             session.instanceId,
             req.params.requestNumber
@@ -66,7 +70,10 @@ router.post('/:requestNumber/sync', async (req, res) => {
     }
 
     try {
-        const result = await syncShipmentTracking(session.instanceId, req.params.requestNumber);
+        const [result, paymentStatus] = await Promise.all([
+            syncShipmentTracking(session.instanceId, req.params.requestNumber),
+            syncWixShipmentPayment(session.instanceId, req.params.requestNumber).catch(() => undefined),
+        ]);
         let ordersUpdated = 0;
         const tnx = result.shipment.tnx_tracking_number;
         const url = result.shipment.tracking_url || '';
@@ -95,7 +102,9 @@ router.post('/:requestNumber/sync', async (req, res) => {
         }
 
         return res.json({
-            shipment: result.shipment,
+            shipment: paymentStatus
+                ? { ...result.shipment, payment_status: paymentStatus }
+                : result.shipment,
             orderId: result.orderId || null,
             orders_updated: ordersUpdated,
         });

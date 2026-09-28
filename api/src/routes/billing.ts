@@ -11,10 +11,11 @@ import {
 } from '../wix/billingEvents.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
 import { clientErrorMessage, payReturnCookieHeader, requestIsHttps } from '../httpSecurity.js';
-import { findOrderShipmentByRequestNumber, getStore, saveOrderShipments, saveStoreSiteIds } from '@thai-nexus/shared';
+import { findOrderShipmentByRequestNumber, getStore, saveStoreSiteIds } from '@thai-nexus/shared';
 import { fetchWixAppInstance } from '../wix/oauth.js';
-import { createShipmentCheckoutSession, getStripe } from '../stripe/checkout.js';
-import { dashboardSiteId, sameCheckoutReturn, shipmentPayReturnUrl } from '../stripe/checkoutReturn.js';
+import { getStripe } from '../stripe/checkout.js';
+import { dashboardSiteId, shipmentPayReturnUrl } from '../stripe/checkoutReturn.js';
+import { requestWixPaymentLink } from '../wix/shipmentPaymentSync.js';
 
 const router = Router();
 
@@ -143,7 +144,8 @@ router.post('/events', async (req: Request, res: Response) => {
 });
 
 /**
- * Start a Stripe Checkout for one shipment. Amount is the stored raw API price in THB.
+ * Open a one-time Thai Nexus payment link for one shipment.
+ * Amount is the stored raw API price in THB.
  */
 router.post('/checkout', async (req: Request, res: Response) => {
     const session = await getSession(req);
@@ -163,6 +165,9 @@ router.post('/checkout', async (req: Request, res: Response) => {
     }
     if (row.payment_status === 'paid') {
         return res.status(409).json({ ok: false, message: 'This shipment is already paid.' });
+    }
+    if (row.payment_status === 'confirming') {
+        return res.status(409).json({ ok: false, message: 'Payment is awaiting approval.' });
     }
 
     const satang = shipmentChargeSatang(row.api_price_thb);
@@ -184,60 +189,42 @@ router.post('/checkout', async (req: Request, res: Response) => {
     });
 
     try {
-        const stripe = getStripe();
         if (row.stripe_checkout_session_id) {
-            const existing = await stripe.checkout.sessions.retrieve(row.stripe_checkout_session_id);
-            if (existing.payment_status === 'paid' || existing.status === 'complete') {
-                if (existing.payment_status === 'paid') {
-                    const { recordPaidCheckoutSession } = await import('../stripe/checkout.js');
-                    await recordPaidCheckoutSession(existing);
+            try {
+                const stripe = getStripe();
+                const existing = await stripe.checkout.sessions.retrieve(row.stripe_checkout_session_id);
+                if (existing.payment_status === 'paid' || existing.status === 'complete') {
+                    if (existing.payment_status === 'paid') {
+                        const { recordPaidCheckoutSession } = await import('../stripe/checkout.js');
+                        await recordPaidCheckoutSession(existing);
+                    }
+                    return res.status(409).json({
+                        ok: false,
+                        message: existing.payment_status === 'paid'
+                            ? 'This shipment is already paid.'
+                            : 'Payment is still processing.',
+                    });
                 }
-                return res.status(409).json({
-                    ok: false,
-                    message: existing.payment_status === 'paid'
-                        ? 'This shipment is already paid.'
-                        : 'Payment is still processing.',
-                });
-            }
-            if (
-                existing.status === 'open' &&
-                existing.url &&
-                existing.amount_total === satang &&
-                sameCheckoutReturn(existing.success_url, returnUrl)
-            ) {
-                rememberPayReturn(req, res, requestNumber);
-                return res.json({ ok: true, url: existing.url });
-            }
-            if (existing.status === 'open') {
-                await stripe.checkout.sessions.expire(existing.id).catch(() => undefined);
+                if (existing.status === 'open') {
+                    await stripe.checkout.sessions.expire(existing.id).catch(() => undefined);
+                }
+            } catch {
+                // A leftover Wix Stripe session must not block the new payment link.
             }
         }
 
-        const idempotencyKey = `tnx_${session.instanceId}_${requestNumber}_${row.stripe_checkout_session_id || 'new'}`.slice(0, 230);
-        const created = await createShipmentCheckoutSession({
+        const link = await requestWixPaymentLink({
             instanceId: session.instanceId,
             requestNumber,
-            orderId: record.orderId,
-            apiPriceThb: row.api_price_thb as number,
-            idempotencyKey,
+            amountThb: row.api_price_thb as number,
             returnUrl,
-            metaSiteId,
         });
-        if (!created.url) {
-            return res.status(502).json({ ok: false, message: 'Stripe did not return a payment link.' });
+        if (!link.url) {
+            return res.status(502).json({ ok: false, message: link.error || 'Could not create payment link.' });
         }
 
-        await saveOrderShipments({
-            ...record,
-            shipments: (record.shipments || []).map((item) =>
-                item.request_number === requestNumber
-                    ? { ...item, stripe_checkout_session_id: created.id, payment_status: item.payment_status || 'unpaid' }
-                    : item
-            ),
-        });
-
         rememberPayReturn(req, res, requestNumber);
-        return res.json({ ok: true, url: created.url });
+        return res.json({ ok: true, url: link.url });
     } catch (err) {
         return res.status(500).json({
             ok: false,

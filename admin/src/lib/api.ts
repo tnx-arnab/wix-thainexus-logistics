@@ -163,7 +163,7 @@ export async function startShipmentPayment(
         '/api/billing/checkout',
         { request_number: requestNumber, return_url: returnUrl || undefined }
     );
-    if (!data.url) throw new Error(data.message || 'Stripe did not return a payment link');
+    if (!data.url) throw new Error(data.message || 'Could not create a payment link');
     return { url: data.url };
 }
 
