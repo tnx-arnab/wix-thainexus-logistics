@@ -138,6 +138,14 @@ try {
     assert(missing.status === 404, `unknown path status ${missing.status}`);
     assert(/404/.test(missingHtml), 'unknown path must include 404');
 
+    const paid = await fetch(`${base}/?billing=paid&request_number=SR-F446ER`, {
+        signal: AbortSignal.timeout(10000),
+    });
+    const paidHtml = await paid.text();
+    assert(paid.status === 200, `billing paid status ${paid.status}`);
+    assert(!/<h1>404<\/h1>/.test(paidHtml), 'billing return must load the app, not the public 404');
+    assert(/id="root"|<title>ci<\/title>|Thai Nexus/.test(paidHtml), 'billing return must serve the dashboard app');
+
     const dash = await fetch(`${base}/?instance=test`, { signal: AbortSignal.timeout(10000) });
     assert(dash.status === 200, `dashboard / status ${dash.status}`);
 

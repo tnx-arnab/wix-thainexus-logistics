@@ -4,6 +4,7 @@ import { cn } from './lib/cn';
 import { getStoredContext, isAppJwt, storeContextFromUrl, stripSensitiveQueryParams } from './lib/wixContext';
 import type { ApiError } from './lib/api';
 import { fetchConfig } from './lib/api';
+import { peekPayReturn } from './lib/payReturn';
 import { resolveAppContext } from './lib/resolveAppContext';
 import type { StoreConfigPublic } from './lib/types';
 import HomePage from './pages/HomePage';
@@ -22,7 +23,18 @@ export default function App() {
         const c = getStoredContext() || storeContextFromUrl();
         return c && isAppJwt(c) ? c : null;
     });
-    const [activeTab, setActiveTab] = useState<string>('settings');
+    const [activeTab, setActiveTab] = useState<string>(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (
+            params.get('tab') === 'shipments' ||
+            params.get('billing') === 'paid' ||
+            params.get('billing') === 'cancel' ||
+            peekPayReturn()
+        ) {
+            return 'shipments';
+        }
+        return 'settings';
+    });
     const [config, setConfig] = useState<StoreConfigPublic | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [healthHint, setHealthHint] = useState<string | null>(null);

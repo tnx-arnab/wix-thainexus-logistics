@@ -8,6 +8,7 @@ import {
     findOrderShipmentByRequestNumber,
     saveOrderShipments,
 } from '@thai-nexus/shared';
+import { shipmentPayReturnUrl } from './checkoutReturn.js';
 
 const STRIPE_API_VERSION = '2026-07-29.dahlia' as Stripe.LatestApiVersion;
 
@@ -52,12 +53,19 @@ export async function createShipmentCheckoutSession(input: {
     orderId?: string;
     apiPriceThb: number;
     idempotencyKey: string;
-}): Promise<{ id: string; url: string | null }> {
+    returnUrl?: string | null;
+    metaSiteId?: string | null;
+}): Promise<{ id: string; url: string | null; returnUrl: string }> {
     const satang = shipmentChargeSatang(input.apiPriceThb);
     if (satang == null) throw new Error('Missing raw Thai Nexus price for this shipment');
 
     const appUrl = (process.env.APP_URL || 'https://wix.thainexus.co.th').replace(/\/$/, '');
-    const request = encodeURIComponent(input.requestNumber);
+    const returnUrl = shipmentPayReturnUrl({
+        requested: input.returnUrl,
+        metaSiteId: input.metaSiteId,
+        appId: process.env.WIX_APP_ID,
+        appUrl,
+    });
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create(
         {
@@ -80,14 +88,14 @@ export async function createShipmentCheckoutSession(input: {
                     },
                 },
             ],
-            success_url: `${appUrl}/?billing=paid&request_number=${request}`,
-            cancel_url: `${appUrl}/?billing=cancel&request_number=${request}`,
+            success_url: returnUrl,
+            cancel_url: returnUrl,
             integration_identifier: checkoutIntegrationId(input.requestNumber),
         },
-        { idempotencyKey: input.idempotencyKey }
+        { idempotencyKey: `${input.idempotencyKey}_${returnUrl}`.slice(0, 255) }
     );
 
-    return { id: session.id, url: session.url };
+    return { id: session.id, url: session.url, returnUrl };
 }
 
 export function verifyStripeWebhook(rawBody: string | Buffer, signature: string | undefined): Stripe.Event {

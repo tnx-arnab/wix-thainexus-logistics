@@ -57,6 +57,10 @@ async function black404(request: Request, env: { ASSETS: AssetBinding }): Promis
 }
 
 function isDashboardHtmlRequest(url: URL, request: Request): boolean {
+    const billing = url.searchParams.get('billing');
+    if (billing === 'paid' || billing === 'cancel' || url.searchParams.get('tab') === 'shipments') {
+        return true;
+    }
     for (const key of ['instance', 'instanceId', 'instance_id', 'context', 'token', 'code']) {
         if (url.searchParams.get(key)?.trim()) return true;
     }

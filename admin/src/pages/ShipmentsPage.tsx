@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, startShipmentPayment, syncShipmentTracking } from '../lib/api';
+import { consumePayReturn, dashboardReferrer, rememberPayReturn } from '../lib/payReturn';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
 function statusClass(status: string | undefined, header = false): string {
@@ -127,15 +128,23 @@ export default function ShipmentsPage() {
         }
     };
 
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = params.get('request_number')?.trim() || '';
+        const requestNumber = /^[A-Za-z0-9-]{1,40}$/.test(fromQuery) ? fromQuery : consumePayReturn();
+        if (requestNumber) void openDetail(requestNumber);
+    }, []);
+
     const payShipment = async () => {
         const requestNumber = selected?.request_number;
         if (!requestNumber || paying || selected?.payment_status === 'paid') return;
         setPaying(true);
         setSyncMessage('');
         try {
-            const { url } = await startShipmentPayment(requestNumber);
-            window.open(url, '_blank', 'noopener,noreferrer');
-            setSyncMessage('Stripe Checkout opened. This shipment is paid after Stripe confirms.');
+            rememberPayReturn(requestNumber);
+            const { url } = await startShipmentPayment(requestNumber, dashboardReferrer());
+            const destination = window.top && window.top !== window ? window.top : window;
+            destination.location.assign(url);
         } catch (err) {
             setSyncMessage(err instanceof Error ? err.message : 'Could not start payment.');
         } finally {

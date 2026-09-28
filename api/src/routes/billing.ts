@@ -11,8 +11,9 @@ import {
 } from '../wix/billingEvents.js';
 import { instanceIdFromAccessToken } from '../wix/tokens.js';
 import { clientErrorMessage } from '../httpSecurity.js';
-import { findOrderShipmentByRequestNumber, saveOrderShipments } from '@thai-nexus/shared';
+import { findOrderShipmentByRequestNumber, getStore, saveOrderShipments } from '@thai-nexus/shared';
 import { createShipmentCheckoutSession, getStripe } from '../stripe/checkout.js';
+import { shipmentPayReturnUrl } from '../stripe/checkoutReturn.js';
 
 const router = Router();
 
@@ -147,6 +148,16 @@ router.post('/checkout', async (req: Request, res: Response) => {
         });
     }
 
+    const requestedReturn = String((req.body || {}).return_url || (req.body || {}).returnUrl || '');
+    const store = await getStore(session.instanceId);
+    const appUrl = (process.env.APP_URL || 'https://wix.thainexus.co.th').replace(/\/$/, '');
+    const returnUrl = shipmentPayReturnUrl({
+        requested: requestedReturn,
+        metaSiteId: store?.meta_site_id,
+        appId: process.env.WIX_APP_ID,
+        appUrl,
+    });
+
     try {
         const stripe = getStripe();
         if (row.stripe_checkout_session_id) {
@@ -163,7 +174,12 @@ router.post('/checkout', async (req: Request, res: Response) => {
                         : 'Payment is still processing.',
                 });
             }
-            if (existing.status === 'open' && existing.url && existing.amount_total === satang) {
+            if (
+                existing.status === 'open' &&
+                existing.url &&
+                existing.amount_total === satang &&
+                existing.success_url === returnUrl
+            ) {
                 return res.json({ ok: true, url: existing.url });
             }
             if (existing.status === 'open') {
@@ -178,6 +194,8 @@ router.post('/checkout', async (req: Request, res: Response) => {
             orderId: record.orderId,
             apiPriceThb: row.api_price_thb as number,
             idempotencyKey,
+            returnUrl,
+            metaSiteId: store?.meta_site_id,
         });
         if (!created.url) {
             return res.status(502).json({ ok: false, message: 'Stripe did not return a payment link.' });

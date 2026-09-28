@@ -155,10 +155,13 @@ export async function fetchShipmentDetail(requestNumber: string): Promise<Shipme
     return data;
 }
 
-export async function startShipmentPayment(requestNumber: string): Promise<{ url: string }> {
+export async function startShipmentPayment(
+    requestNumber: string,
+    returnUrl?: string
+): Promise<{ url: string }> {
     const { data } = await api.post<{ ok: boolean; url?: string; message?: string }>(
         '/api/billing/checkout',
-        { request_number: requestNumber }
+        { request_number: requestNumber, return_url: returnUrl || undefined }
     );
     if (!data.url) throw new Error(data.message || 'Stripe did not return a payment link');
     return { url: data.url };
