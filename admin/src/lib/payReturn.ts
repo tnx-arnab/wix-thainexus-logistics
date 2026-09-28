@@ -12,6 +12,17 @@ export function dashboardReferrer(): string {
     }
 }
 
+/** Leave the Wix iframe for Stripe without reading the parent window. */
+export function leaveForCheckout(url: string): void {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_top';
+    link.rel = 'noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
 export function rememberPayReturn(requestNumber: string): void {
     try {
         localStorage.setItem(

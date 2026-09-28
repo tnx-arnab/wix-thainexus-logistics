@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, startShipmentPayment, syncShipmentTracking } from '../lib/api';
-import { consumePayReturn, dashboardReferrer, rememberPayReturn } from '../lib/payReturn';
+import { consumePayReturn, dashboardReferrer, leaveForCheckout, rememberPayReturn } from '../lib/payReturn';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
 function statusClass(status: string | undefined, header = false): string {
@@ -143,8 +143,7 @@ export default function ShipmentsPage() {
         try {
             rememberPayReturn(requestNumber);
             const { url } = await startShipmentPayment(requestNumber, dashboardReferrer());
-            const destination = window.top && window.top !== window ? window.top : window;
-            destination.location.assign(url);
+            leaveForCheckout(url);
         } catch (err) {
             setSyncMessage(err instanceof Error ? err.message : 'Could not start payment.');
         } finally {
