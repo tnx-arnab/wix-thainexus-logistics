@@ -16,6 +16,12 @@ import { fetchShipmentDetail, fetchShipments, fetchWebhookStatus, startShipmentP
 import { consumePayReturn, dashboardReferrer, leaveForCheckout, rememberPayReturn } from '../lib/payReturn';
 import type { ShipmentDetail, ShipmentSummary } from '../lib/types';
 
+/** Wallet approval is stored as paid. Card approval is stored as ready_to_ship. Both are approved. */
+function shipmentStatusLabel(status: string | undefined, paymentStatus?: string): string {
+    if (paymentStatus === 'paid' && status?.toLowerCase() === 'paid') return 'ready_to_ship';
+    return status || 'Unknown';
+}
+
 function statusClass(status: string | undefined, header = false): string {
     const s = status?.toLowerCase() || '';
     if (s.includes('submit') || s.includes('pending')) {
@@ -300,9 +306,9 @@ export default function ShipmentsPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span
-                                                className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium border ${statusClass(s.status)}`}
+                                                className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium border ${statusClass(shipmentStatusLabel(s.status, s.payment_status))}`}
                                             >
-                                                {s.status || 'Unknown'}
+                                                {shipmentStatusLabel(s.status, s.payment_status)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-gray-700">
@@ -376,9 +382,9 @@ export default function ShipmentsPage() {
                                     {selected.request_number}
                                 </h3>
                                 <span
-                                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs border ${statusClass(selected.status, true)}`}
+                                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs border ${statusClass(shipmentStatusLabel(selected.status, selected.payment_status), true)}`}
                                 >
-                                    {selected.status}
+                                    {shipmentStatusLabel(selected.status, selected.payment_status)}
                                 </span>
                             </div>
                             <button
