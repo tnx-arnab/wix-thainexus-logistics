@@ -70,6 +70,8 @@ export interface OrderShipmentRecord {
         paid_at?: string | null;
         wix_billing_reported_at?: string | null;
         wix_billing_claim?: string | null;
+        /** Set after Thai Nexus accepts the shipping payment and status update. */
+        tnx_payment_reported_at?: string | null;
     }>;
     packedBoxes?: Array<{
         length: number;

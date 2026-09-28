@@ -10,6 +10,7 @@ import {
     saveOrderShipments,
 } from '@thai-nexus/shared';
 import { shipmentPayReturnUrl } from './checkoutReturn.js';
+import { reportWixShipmentPayment } from './shipmentPayment.js';
 
 const STRIPE_API_VERSION = '2026-07-29.dahlia' as Stripe.LatestApiVersion;
 
@@ -143,11 +144,12 @@ export async function recordPaidCheckoutSession(session: Stripe.Checkout.Session
             ? session.payment_intent
             : session.payment_intent?.id;
 
-    if (row.payment_status === 'paid' && row.wix_billing_reported_at) {
+    if (row.payment_status === 'paid' && row.wix_billing_reported_at && row.tnx_payment_reported_at) {
         return { ok: true, already: true, billingOk: true };
     }
 
     const paidAt = row.paid_at || new Date().toISOString();
+    const intentId = paymentIntentId || row.stripe_payment_intent_id || '';
     const claim = `${session.id}:${Date.now()}`;
     const shipments = (record.shipments || []).map((item) =>
         item.request_number === requestNumber
@@ -155,13 +157,47 @@ export async function recordPaidCheckoutSession(session: Stripe.Checkout.Session
                   ...item,
                   payment_status: 'paid' as const,
                   stripe_checkout_session_id: session.id,
-                  stripe_payment_intent_id: paymentIntentId || item.stripe_payment_intent_id,
+                  stripe_payment_intent_id: intentId || item.stripe_payment_intent_id,
                   paid_at: paidAt,
                   wix_billing_claim: row.wix_billing_reported_at ? item.wix_billing_claim : claim,
               }
             : item
     );
     await saveOrderShipments({ ...record, shipments });
+
+    const afterPaid = await findOrderShipmentByRequestNumber(instanceId, requestNumber);
+    const paidRow = afterPaid?.shipments?.find((item) => item.request_number === requestNumber);
+    if (!paidRow?.tnx_payment_reported_at) {
+        if (!intentId) {
+            return { ok: false, error: 'Checkout session is missing a payment intent' };
+        }
+        const reported = await reportWixShipmentPayment({
+            instanceId,
+            requestNumber,
+            amountThb: row.api_price_thb as number,
+            paymentIntentId: intentId,
+            sessionId: session.id,
+            paidAt,
+        });
+        if (!reported.ok) {
+            return { ok: false, error: reported.error || 'Thai Nexus payment update failed' };
+        }
+        const current = await findOrderShipmentByRequestNumber(instanceId, requestNumber);
+        if (current) {
+            await saveOrderShipments({
+                ...current,
+                shipments: (current.shipments || []).map((item) =>
+                    item.request_number === requestNumber
+                        ? {
+                              ...item,
+                              status: reported.shipmentStatus || item.status,
+                              tnx_payment_reported_at: new Date().toISOString(),
+                          }
+                        : item
+                ),
+            });
+        }
+    }
 
     if (row.wix_billing_reported_at) {
         return { ok: true, already: true, billingOk: true };
@@ -179,7 +215,7 @@ export async function recordPaidCheckoutSession(session: Stripe.Checkout.Session
             apiPriceThb: row.api_price_thb as number,
             requestNumber,
             orderId: session.metadata?.order_id || record.orderId,
-            paymentIntentId,
+            paymentIntentId: intentId,
         })
     );
 
