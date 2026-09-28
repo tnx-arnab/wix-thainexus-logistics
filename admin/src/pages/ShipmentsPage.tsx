@@ -22,6 +22,15 @@ function shipmentStatusLabel(status: string | undefined, paymentStatus?: string)
     return status || 'Unknown';
 }
 
+function canPayShipment(shipment: { payment_status?: string; api_price_thb?: number | null }): boolean {
+    return (
+        shipment.payment_status !== 'paid' &&
+        shipment.payment_status !== 'confirming' &&
+        shipment.api_price_thb != null &&
+        shipment.api_price_thb > 0
+    );
+}
+
 function statusClass(status: string | undefined, header = false): string {
     const s = status?.toLowerCase() || '';
     if (s.includes('submit') || s.includes('pending')) {
@@ -57,6 +66,8 @@ export default function ShipmentsPage() {
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [paying, setPaying] = useState(false);
+    const [payingRequest, setPayingRequest] = useState<string | null>(null);
+    const [payError, setPayError] = useState('');
     const [syncMessage, setSyncMessage] = useState('');
     const [query, setQuery] = useState('');
 
@@ -166,19 +177,26 @@ export default function ShipmentsPage() {
         if (requestNumber) void openDetail(requestNumber);
     }, []);
 
-    const payShipment = async () => {
-        const requestNumber = selected?.request_number;
-        if (!requestNumber || paying || selected?.payment_status === 'paid') return;
+    const payShipment = async (requestNumber: string) => {
+        const row =
+            shipments.find((item) => item.request_number === requestNumber) ||
+            (selected?.request_number === requestNumber ? selected : undefined);
+        if (!requestNumber || paying || !row || !canPayShipment(row)) return;
         setPaying(true);
+        setPayingRequest(requestNumber);
+        setPayError('');
         setSyncMessage('');
         try {
             rememberPayReturn(requestNumber);
             const { url } = await startShipmentPayment(requestNumber, dashboardReferrer());
             leaveForCheckout(url);
         } catch (err) {
-            setSyncMessage(err instanceof Error ? err.message : 'Could not start payment.');
+            const message = err instanceof Error ? err.message : 'Could not start payment.';
+            setPayError(message);
+            setSyncMessage(message);
         } finally {
             setPaying(false);
+            setPayingRequest(null);
         }
     };
 
@@ -255,6 +273,7 @@ export default function ShipmentsPage() {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                     />
+                    {payError ? <p className="mt-2 text-sm text-secondary">{payError}</p> : null}
                 </div>
 
                 <div className="overflow-x-auto">
@@ -328,13 +347,28 @@ export default function ShipmentsPage() {
                                             {formatDate(s.submitted_date || s.created_at)}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button
-                                                type="button"
-                                                onClick={() => openDetail(s.request_number)}
-                                                className="text-primary hover:underline font-medium"
-                                            >
-                                                View
-                                            </button>
+                                            <div className="inline-flex items-center justify-end gap-3">
+                                                {canPayShipment(s) ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => payShipment(s.request_number)}
+                                                        disabled={paying}
+                                                        className="tnxl-btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+                                                    >
+                                                        {payingRequest === s.request_number ? (
+                                                            <Loader2 size={14} className="animate-spin" />
+                                                        ) : null}
+                                                        Pay
+                                                    </button>
+                                                ) : null}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openDetail(s.request_number)}
+                                                    className="text-primary hover:underline font-medium"
+                                                >
+                                                    View
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -473,7 +507,7 @@ export default function ShipmentsPage() {
                             ) : null}
                             <button
                                 type="button"
-                                onClick={payShipment}
+                                onClick={() => selected.request_number && payShipment(selected.request_number)}
                                 disabled={
                                     paying ||
                                     selected.payment_status === 'paid' ||
