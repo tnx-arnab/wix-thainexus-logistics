@@ -22,6 +22,9 @@ export interface ShipmentSummary {
     request_number: string;
     status?: string;
     volumetric_weight_kg?: number;
+    actual_weight_kg?: number;
+    /** max(actual, volumetric). This is the weight Thai Nexus prices. */
+    chargeable_weight_kg?: number;
     submitted_date?: string;
     created_at?: string;
     /** Raw Thai Nexus price for this box, in THB. Not the checkout shipping total. */

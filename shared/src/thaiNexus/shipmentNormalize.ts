@@ -17,6 +17,21 @@ function pickString(row: Record<string, unknown>, ...keys: string[]): string {
     return '';
 }
 
+/** Chargeable weight is the greater of actual and volumetric, matching Thai Nexus pricing. */
+export function chargeableWeightKg(
+    actual?: number,
+    volumetric?: number,
+    stored?: number
+): number | undefined {
+    if (stored != null && Number.isFinite(stored) && stored > 0) {
+        return Math.round(stored * 1000) / 1000;
+    }
+    if (actual == null && volumetric == null) return undefined;
+    const weight = Math.max(actual ?? 0, volumetric ?? 0);
+    if (!Number.isFinite(weight) || weight <= 0) return undefined;
+    return Math.round(weight * 1000) / 1000;
+}
+
 function pickNumber(row: Record<string, unknown>, ...keys: string[]): number | undefined {
     for (const key of keys) {
         const value = row[key];
@@ -39,6 +54,12 @@ export function normalizeShipmentSummary(row: unknown): ShipmentSummary {
             'volumetric_weight_kg',
             'volumetricWeightKg',
             'volumetric_weight'
+        ),
+        actual_weight_kg: pickNumber(r, 'actual_weight_kg', 'actualWeightKg', 'weight_kg'),
+        chargeable_weight_kg: chargeableWeightKg(
+            pickNumber(r, 'actual_weight_kg', 'actualWeightKg', 'weight_kg'),
+            pickNumber(r, 'volumetric_weight_kg', 'volumetricWeightKg', 'volumetric_weight'),
+            pickNumber(r, 'gross_weight_kg', 'grossWeightKg', 'chargeable_weight_kg')
         ),
         submitted_date: pickString(r, 'submitted_date', 'submittedDate') || undefined,
         created_at: pickString(r, 'created_at', 'createdAt', 'submitted_date', 'submittedDate') || undefined,
@@ -154,16 +175,45 @@ export function normalizeShipmentListResponse(raw: Record<string, unknown>): Shi
     };
 }
 
+function withoutEmpty(row: ShipmentSummary): ShipmentSummary {
+    const next: ShipmentSummary = { ...row };
+    for (const key of Object.keys(next) as (keyof ShipmentSummary)[]) {
+        if (next[key] === undefined || next[key] === '') delete next[key];
+    }
+    return next;
+}
+
+/**
+ * Live Thai Nexus rows win for shipment status. Local rows keep payment fields
+ * the public list does not return.
+ */
 export function mergeShipmentSummaries(
-    primary: ShipmentSummary[],
-    secondary: ShipmentSummary[]
+    upstream: ShipmentSummary[],
+    local: ShipmentSummary[]
 ): ShipmentSummary[] {
     const merged = new Map<string, ShipmentSummary>();
 
-    for (const row of [...primary, ...secondary]) {
+    for (const row of local) {
+        if (!row.request_number) continue;
+        merged.set(row.request_number, withoutEmpty(row));
+    }
+
+    for (const row of upstream) {
         if (!row.request_number) continue;
         const existing = merged.get(row.request_number);
-        merged.set(row.request_number, existing ? { ...existing, ...row } : row);
+        const live = withoutEmpty(row);
+        if (!existing) {
+            merged.set(row.request_number, live);
+            continue;
+        }
+        merged.set(row.request_number, {
+            ...existing,
+            ...live,
+            status: live.status || existing.status,
+            api_price_thb: existing.api_price_thb ?? live.api_price_thb,
+            payment_status: existing.payment_status || live.payment_status,
+            created_at: existing.created_at || live.created_at || live.submitted_date,
+        });
     }
 
     return [...merged.values()].sort((a, b) => {

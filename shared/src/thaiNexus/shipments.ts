@@ -28,21 +28,24 @@ async function fetchThaiNexusShipmentList(
     page: number,
     limit: number
 ): Promise<ShipmentListResponse> {
-    try {
-        const response = await shipmentCrud(token, 'list', {
-            data: { page, limit },
-        });
+    const response = await shipmentCrud(token, 'list', { page, limit });
+    return normalizeShipmentListResponse(response);
+}
 
-        return normalizeShipmentListResponse(response);
-    } catch (nestedError) {
-        const response = await shipmentCrud(token, 'list', { page, limit });
+/** shipmentCrud caps each page at 100 and reads page/limit from the top-level body. */
+async function fetchThaiNexusShipmentPages(token: string): Promise<ShipmentSummary[]> {
+    const pageSize = 100;
+    const rows: ShipmentSummary[] = [];
 
-        try {
-            return normalizeShipmentListResponse(response);
-        } catch (flatError) {
-            throw nestedError instanceof Error ? nestedError : flatError;
-        }
+    for (let page = 1; page <= 5; page++) {
+        const upstream = await fetchThaiNexusShipmentList(token, page, pageSize);
+        const batch = upstream.data || [];
+        rows.push(...batch);
+        const total = upstream.pagination?.total ?? upstream.total ?? rows.length;
+        if (!batch.length || rows.length >= total || batch.length < pageSize) break;
     }
+
+    return rows;
 }
 
 export async function listShipments(
@@ -83,8 +86,7 @@ export async function listShipmentsForStore(
     let upstreamError: string | null = null;
 
     try {
-        const upstream = await fetchThaiNexusShipmentList(token, 1, 250);
-        upstreamRows = upstream.data || [];
+        upstreamRows = await fetchThaiNexusShipmentPages(token);
     } catch (err) {
         upstreamError = err instanceof Error ? err.message : 'Thai Nexus shipment list failed';
     }
@@ -132,19 +134,11 @@ export async function getShipment(
         throw new Error('Thai Nexus API token is not configured');
     }
 
-    try {
-        const response = await shipmentCrud(token, 'get', {
-            data: { request_number: requestNumber },
-        });
+    const response = await shipmentCrud(token, 'get', {
+        request_number: requestNumber,
+    });
 
-        return normalizeShipmentDetail(response.data ?? response);
-    } catch {
-        const response = await shipmentCrud(token, 'get', {
-            request_number: requestNumber,
-        });
-
-        return normalizeShipmentDetail(response.data ?? response);
-    }
+    return normalizeShipmentDetail(response.data ?? response);
 }
 
 export async function syncShipmentTracking(

@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { findOrderShipmentByRequestNumber, getShipment, listShipmentsForStore, syncShipmentTracking } from '@thai-nexus/shared';
+import { findOrderShipmentByRequestNumber, getShipment, listShipmentsForStore, saveOrderShipments, syncShipmentTracking } from '@thai-nexus/shared';
 import { getSession } from '../auth.js';
 import { getValidAccessToken } from '../wix/tokens.js';
 import { pushTrackingToWixOrder } from '../wix/trackingPush.js';
+import { deferWebhookWork } from '../workerContext.js';
 import { syncWixShipmentPayment } from '../wix/shipmentPaymentSync.js';
 
 const router = Router();
@@ -40,21 +41,39 @@ router.get('/:requestNumber', async (req, res) => {
     }
 
     try {
-        const [, detail] = await Promise.all([
-            syncWixShipmentPayment(session.instanceId, req.params.requestNumber).catch(() => undefined),
+        let remoteStatus: 'unpaid' | 'paid' | 'confirming' | undefined;
+        const paymentPromise = syncWixShipmentPayment(session.instanceId, req.params.requestNumber)
+            .then((status) => {
+                remoteStatus = status;
+                return status;
+            })
+            .catch(() => undefined);
+        deferWebhookWork(paymentPromise);
+
+        const [detail, record] = await Promise.all([
             getShipment(session.instanceId, req.params.requestNumber),
+            findOrderShipmentByRequestNumber(session.instanceId, req.params.requestNumber),
         ]);
-        const record = await findOrderShipmentByRequestNumber(
-            session.instanceId,
-            req.params.requestNumber
-        );
         const row = record?.shipments?.find(
             (item) => item.request_number === req.params.requestNumber
         );
+        if (record && row && detail.status && detail.status !== row.status) {
+            await saveOrderShipments({
+                ...record,
+                shipments: (record.shipments || []).map((item) =>
+                    item.request_number === req.params.requestNumber
+                        ? { ...item, status: detail.status }
+                        : item
+                ),
+            }).catch(() => undefined);
+        }
         return res.json({
             ...detail,
-            api_price_thb: row?.api_price_thb ?? null,
-            payment_status: row?.payment_status || (row?.api_price_thb ? 'unpaid' : undefined),
+            api_price_thb: row?.api_price_thb ?? detail.api_price_thb ?? null,
+            payment_status:
+                remoteStatus ||
+                row?.payment_status ||
+                (row?.api_price_thb ? 'unpaid' : undefined),
         });
     } catch (err) {
         return res.status(500).json({

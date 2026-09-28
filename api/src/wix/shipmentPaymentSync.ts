@@ -14,7 +14,7 @@ function functionsBaseUrl(): string {
 export async function readThaiNexusPaymentState(
     instanceId: string,
     requestNumber: string
-): Promise<RemotePayState | null> {
+): Promise<{ paymentState: RemotePayState; shipmentStatus?: string } | null> {
     const token = await getApiToken(instanceId);
     if (!token) return null;
 
@@ -38,8 +38,13 @@ export async function readThaiNexusPaymentState(
     }
     if (!res.ok || body.success === false) return null;
     const state = body.payment_state;
-    if (state === 'paid' || state === 'confirming' || state === 'unpaid') return state;
-    return null;
+    if (state !== 'paid' && state !== 'confirming' && state !== 'unpaid') return null;
+    const shipmentStatus =
+        typeof body.shipment_status === 'string' ? body.shipment_status.trim() : '';
+    return {
+        paymentState: state,
+        shipmentStatus: shipmentStatus || undefined,
+    };
 }
 
 /**
@@ -57,7 +62,7 @@ export async function syncWixShipmentPayment(
     const row = record?.shipments?.find((item) => item.request_number === requestNumber);
     if (!record || !row) return undefined;
 
-    const next = nextLocalPaymentStatus(row.payment_status, remote);
+    const next = nextLocalPaymentStatus(row.payment_status, remote.paymentState);
     const claim = `${requestNumber}:${Date.now()}:${crypto.randomUUID()}`;
     const shouldBill = next === 'paid' && !row.wix_billing_reported_at && row.api_price_thb != null && row.api_price_thb > 0;
 
@@ -67,6 +72,7 @@ export async function syncWixShipmentPayment(
             item.request_number === requestNumber
                 ? {
                       ...item,
+                      status: remote.shipmentStatus || item.status,
                       payment_status: next,
                       paid_at: next === 'paid' ? item.paid_at || new Date().toISOString() : item.paid_at,
                       wix_billing_claim: shouldBill ? claim : item.wix_billing_claim,

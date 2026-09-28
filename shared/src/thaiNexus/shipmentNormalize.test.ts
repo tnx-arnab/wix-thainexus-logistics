@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+    chargeableWeightKg,
     mergeShipmentSummaries,
     normalizeShipmentListResponse,
     normalizeShipmentSummary,
@@ -44,20 +45,39 @@ describe('normalizeShipmentListResponse', () => {
     });
 });
 
+describe('chargeableWeightKg', () => {
+    it('uses the higher of actual and volumetric weight', () => {
+        assert.equal(chargeableWeightKg(1.25, 0.001), 1.25);
+        assert.equal(chargeableWeightKg(0.4, 0.5916), 0.592);
+        assert.equal(
+            normalizeShipmentSummary({
+                request_number: 'SR-1',
+                actual_weight_kg: 2,
+                volumetric_weight_kg: 0,
+            }).chargeable_weight_kg,
+            2
+        );
+    });
+});
+
 describe('mergeShipmentSummaries', () => {
-    it('deduplicates by request number and prefers newer merged fields', () => {
+    it('keeps the live Thai Nexus status and the stored payment fields', () => {
         const merged = mergeShipmentSummaries(
-            [normalizeShipmentSummary({ request_number: 'TN-1', status: 'Old' })],
+            [normalizeShipmentSummary({ request_number: 'SR-X4AKLV', status: 'ready_to_ship' })],
             [
-                normalizeShipmentSummary({
-                    request_number: 'TN-1',
-                    status: 'Submitted',
-                    created_at: '2026-06-01T00:00:00.000Z',
-                }),
+                {
+                    request_number: 'SR-X4AKLV',
+                    status: 'pending',
+                    payment_status: 'paid',
+                    api_price_thb: 535,
+                    created_at: '2026-09-28T00:00:00.000Z',
+                },
             ]
         );
 
         assert.equal(merged.length, 1);
-        assert.equal(merged[0].status, 'Submitted');
+        assert.equal(merged[0].status, 'ready_to_ship');
+        assert.equal(merged[0].payment_status, 'paid');
+        assert.equal(merged[0].api_price_thb, 535);
     });
 });

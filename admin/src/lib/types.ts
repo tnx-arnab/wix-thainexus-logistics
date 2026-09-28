@@ -156,6 +156,8 @@ export interface ShipmentSummary {
     request_number: string;
     status?: string;
     volumetric_weight_kg?: number;
+    actual_weight_kg?: number;
+    chargeable_weight_kg?: number;
     submitted_date?: string;
     created_at?: string;
     api_price_thb?: number | null;

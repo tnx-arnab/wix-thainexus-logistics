@@ -114,22 +114,40 @@ export default function ShipmentsPage() {
     };
 
     const openDetail = async (requestNumber: string) => {
+        const known = shipments.find((item) => item.request_number === requestNumber);
         setDetailsLoading(true);
         setSyncMessage('');
-        setSelected({ request_number: requestNumber });
+        setSelected({ ...(known || {}), request_number: requestNumber });
         try {
             const detail = await fetchShipmentDetail(requestNumber);
-            setSelected(detail);
+            setSelected((current) =>
+                current?.request_number === requestNumber
+                    ? {
+                          ...known,
+                          ...detail,
+                          api_price_thb: detail.api_price_thb ?? known?.api_price_thb,
+                          payment_status: detail.payment_status || known?.payment_status,
+                      }
+                    : current
+            );
             setShipments((current) =>
                 current.map((item) =>
                     item.request_number === requestNumber
-                        ? { ...item, payment_status: detail.payment_status }
+                        ? {
+                              ...item,
+                              status: detail.status || item.status,
+                              payment_status: detail.payment_status || item.payment_status,
+                          }
                         : item
                 )
             );
         } catch {
-            setSelected(null);
-            alert('Could not load shipment details.');
+            if (!known) {
+                setSelected(null);
+                alert('Could not load shipment details.');
+            } else {
+                setSyncMessage('Addresses are still loading from Thai Nexus. Price and payment are shown.');
+            }
         } finally {
             setDetailsLoading(false);
         }
@@ -170,7 +188,11 @@ export default function ShipmentsPage() {
                 setShipments((current) =>
                     current.map((item) =>
                         item.request_number === requestNumber
-                            ? { ...item, payment_status: data.shipment.payment_status }
+                            ? {
+                                  ...item,
+                                  status: data.shipment.status || item.status,
+                                  payment_status: data.shipment.payment_status || item.payment_status,
+                              }
                             : item
                     )
                 );
@@ -236,7 +258,7 @@ export default function ShipmentsPage() {
                                 <th className="text-left px-6 py-3">Request number</th>
                                 <th className="text-left px-6 py-3">Status</th>
                                 <th className="text-left px-6 py-3">API price</th>
-                                <th className="text-left px-6 py-3">Vol. weight</th>
+                                <th className="text-left px-6 py-3">Chargeable weight</th>
                                 <th className="text-left px-6 py-3">Date</th>
                                 <th className="px-6 py-3" />
                             </tr>
@@ -294,7 +316,7 @@ export default function ShipmentsPage() {
                                             ) : null}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600">
-                                            {s.volumetric_weight_kg ?? '0'} kg
+                                            {s.chargeable_weight_kg ?? '0'} kg
                                         </td>
                                         <td className="px-6 py-4 text-gray-600">
                                             {formatDate(s.submitted_date || s.created_at)}
@@ -368,21 +390,17 @@ export default function ShipmentsPage() {
                             </button>
                         </div>
 
-                        {detailsLoading ? (
-                            <div className="p-12 flex flex-col items-center text-gray-500">
-                                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                                <p className="mt-3">Syncing details…</p>
-                            </div>
-                        ) : (
-                            <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6">
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <AddressBlock
                                         title="Shipper"
                                         address={selected.shipper_address}
+                                        loading={detailsLoading && !selected.shipper_address}
                                     />
                                     <AddressBlock
                                         title="Consignee"
                                         address={selected.consignee_address}
+                                        loading={detailsLoading && !selected.consignee_address}
                                     />
                                 </div>
                                 {trackingUrl(selected) ? (
@@ -414,7 +432,10 @@ export default function ShipmentsPage() {
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {[
-                                        { label: 'Weight', value: `${selected.actual_weight_kg ?? '-'} kg` },
+                                        {
+                                            label: 'Weight',
+                                            value: `${selected.actual_weight_kg ?? selected.chargeable_weight_kg ?? '-'} kg`,
+                                        },
                                         { label: 'Length', value: `${selected.length_cm ?? '-'} cm` },
                                         { label: 'Width', value: `${selected.width_cm ?? '-'} cm` },
                                         { label: 'Height', value: `${selected.height_cm ?? '-'} cm` },
@@ -439,7 +460,6 @@ export default function ShipmentsPage() {
                                     </p>
                                 </div>
                             </div>
-                        )}
 
                         <div className="p-6 border-t flex flex-wrap justify-end items-center gap-3">
                             {syncMessage ? (
@@ -450,7 +470,6 @@ export default function ShipmentsPage() {
                                 onClick={payShipment}
                                 disabled={
                                     paying ||
-                                    detailsLoading ||
                                     selected.payment_status === 'paid' ||
                                     selected.payment_status === 'confirming' ||
                                     !(selected.api_price_thb != null && selected.api_price_thb > 0)
@@ -512,15 +531,19 @@ export default function ShipmentsPage() {
 function AddressBlock({
     title,
     address,
+    loading = false,
 }: {
     title: string;
     address?: ShipmentDetail['shipper_address'];
+    loading?: boolean;
 }) {
     if (!address) {
         return (
             <div className="border border-gray-100 rounded-lg p-4">
                 <p className="font-semibold text-primary mb-2">{title}</p>
-                <p className="text-gray-400 text-sm">No address data</p>
+                <p className="text-gray-400 text-sm">
+                    {loading ? 'Loading address…' : 'No address data'}
+                </p>
             </div>
         );
     }
