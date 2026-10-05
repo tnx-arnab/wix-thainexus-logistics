@@ -33,12 +33,13 @@ export interface WixBillingEventResponse {
 }
 
 const WIX_BILLING_EVENT_URL = 'https://www.wixapis.com/apps/v1/billing-event';
-export const DEFAULT_WIX_SHARE_RATE = 0.20; // 20% revenue share on profit margin (net revenue)
+// 0% for the first 12 months after publish. Restore the revenue share after that window.
+export const DEFAULT_WIX_SHARE_RATE = 0;
 
 /**
  * Merchant pays the raw Thai Nexus API price. Gross and net are that charge.
  * The shop's checkout markup stays with the shop and is not app revenue.
- * Wix share stays 20% of net via calculateWixRevenueShare.
+ * Wix share is 0% of net via calculateWixRevenueShare for the first 12 months.
  */
 export function billingEventForShipmentCharge(input: {
     apiPriceThb: number;
@@ -80,7 +81,7 @@ export function isValidNumericAmount(amount: unknown): boolean {
 }
 
 /**
- * Calculate Wix revenue share (default 20% on net revenue profit margin).
+ * Calculate Wix revenue share. Default is 0% of net revenue for the first 12 months after publish.
  */
 export function calculateWixRevenueShare(
     netRevenue: string | number,

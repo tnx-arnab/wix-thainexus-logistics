@@ -29,7 +29,7 @@ test('shipment charge uses the raw API price in satang', () => {
     assert.equal(event.external_id, 'REQ-1');
     const payload = buildWixBillingEventPayload(event);
     assert.equal(payload.event.gross_revenue, '240.50');
-    assert.equal(payload.event.wix_share, '48.10');
+    assert.equal(payload.event.wix_share, '0.00');
 });
 
 test('formatCurrencyAmount formats strings, numbers, and negative amounts', () => {
@@ -53,13 +53,14 @@ test('isValidNumericAmount validates numeric values correctly', () => {
     assert.equal(isValidNumericAmount('abc'), false);
 });
 
-test('calculateWixRevenueShare calculates 20% on profit margin (net revenue)', () => {
-    assert.equal(calculateWixRevenueShare(100), '20.00');
-    assert.equal(calculateWixRevenueShare(25.5), '5.10');
-    assert.equal(calculateWixRevenueShare('50'), '10.00');
-    assert.equal(calculateWixRevenueShare(-50), '10.00');
+test('calculateWixRevenueShare is 0% of net revenue for the first 12 months', () => {
+    assert.equal(calculateWixRevenueShare(100), '0.00');
+    assert.equal(calculateWixRevenueShare(25.5), '0.00');
+    assert.equal(calculateWixRevenueShare('50'), '0.00');
+    assert.equal(calculateWixRevenueShare(-50), '0.00');
     assert.equal(calculateWixRevenueShare(0), '0.00');
     assert.equal(calculateWixRevenueShare('invalid'), '0.00');
+    assert.equal(calculateWixRevenueShare(100, 0.2), '20.00');
 });
 
 test('buildWixBillingEventPayload builds standard CHARGE event', () => {
@@ -74,7 +75,7 @@ test('buildWixBillingEventPayload builds standard CHARGE event', () => {
     assert.equal(payload.event.billing_type, 'CHARGE');
     assert.equal(payload.event.gross_revenue, '120.00');
     assert.equal(payload.event.net_revenue, '30.00');
-    assert.equal(payload.event.wix_share, '6.00'); // 20% of 30.00
+    assert.equal(payload.event.wix_share, '0.00');
     assert.equal(payload.event.order_id, 'order-123');
     assert.equal(payload.event.description, 'Shipping label purchase');
     assert.ok(payload.event.created_date);
@@ -124,7 +125,7 @@ test('sendWixBillingEventWithToken posts to Wix API and handles non-200 response
         assert.equal(requestedUrl, 'https://www.wixapis.com/apps/v1/billing-event');
         assert.equal(requestedHeaders['Authorization'], 'mock-access-token-xyz');
         assert.equal(requestedBody.event.billing_type, 'CHARGE');
-        assert.equal(requestedBody.event.wix_share, '4.00');
+        assert.equal(requestedBody.event.wix_share, '0.00');
     } finally {
         globalThis.fetch = originalFetch;
     }
@@ -287,7 +288,7 @@ CREATE TABLE IF NOT EXISTS stores (
             });
             const previewBody = await previewRes.json() as Record<string, unknown>;
             assert.equal(previewRes.status, 200);
-            assert.equal(previewBody.wix_share, '10.00');
+            assert.equal(previewBody.wix_share, '0.00');
         } finally {
             server.close();
         }

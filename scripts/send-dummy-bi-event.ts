@@ -72,7 +72,7 @@ async function run() {
             billing_type: 'CHARGE',
             gross_revenue: '100.00',
             net_revenue: '20.00',
-            wix_share: '4.00',
+            wix_share: '0.00',
         },
     };
 
