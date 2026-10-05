@@ -77,12 +77,14 @@ async function withMockedApiQuote(
 ): Promise<void> {
     const original = globalThis.fetch;
     let quoteCalls = 0;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (!url.includes('apiQuote')) {
             throw new Error(`Unexpected fetch in rate test: ${url}`);
         }
         quoteCalls += 1;
+        const sent = JSON.parse(String(init?.body || '{}')) as { platform?: string };
+        assert.equal(sent.platform, 'wix');
         return new Response(JSON.stringify({ quotes }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },

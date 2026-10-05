@@ -64,6 +64,7 @@ export async function apiQuote(params: QuoteParams): Promise<{ quotes?: ThaiNexu
                 width_cm: params.width_cm,
                 height_cm: params.height_cm,
                 is_document: params.is_document,
+                platform: 'wix',
                 refresh: params.refresh !== false,
                 requested_at: new Date().toISOString(),
             }),

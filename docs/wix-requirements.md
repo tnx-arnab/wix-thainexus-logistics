@@ -421,7 +421,9 @@ Normalize service ids before compare: trim, whitespace → `_`, lowercase.
 | `shipmentCrud` | `list` \| `get` \| `create` |
 | connection test | Via client / services call with token |
 
-`apiQuote` body keys: `api_token`, `country`, `state`, `postcode`, `city`, `actual_weight_kg`, `length_cm`, `width_cm`, `height_cm`, `is_document`.
+`apiQuote` body keys: `api_token`, `country`, `state`, `postcode`, `city`, `actual_weight_kg`, `length_cm`, `width_cm`, `height_cm`, `is_document`, `platform`.
+
+`platform` is optional on the API and case-insensitive. It names where the request comes from, for example `wix`, `shopify`, or `wordpress`. This app always sends `platform: "wix"`.
 
 ### 4.7 Store config JSON shape
 

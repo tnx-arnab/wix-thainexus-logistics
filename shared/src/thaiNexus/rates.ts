@@ -109,6 +109,7 @@ function quotePayload(params: QuoteParams): Record<string, unknown> {
         width_cm: params.width_cm,
         height_cm: params.height_cm,
         is_document: params.is_document,
+        platform: 'wix',
     };
 }
 
