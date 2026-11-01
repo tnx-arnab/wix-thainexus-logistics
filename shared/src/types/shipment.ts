@@ -95,4 +95,6 @@ export interface OrderShipmentRecord {
     shipping_currency?: string | null;
     selected_courier?: string | null;
     selected_courier_title?: string | null;
+    /** Set while shipmentCrud create is running; prevents duplicate concurrent webhook work. */
+    createInProgressAt?: string | null;
 }

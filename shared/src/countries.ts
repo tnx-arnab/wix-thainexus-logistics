@@ -135,6 +135,18 @@ export const COUNTRIES: CountryOption[] = [
 ];
 
 const COUNTRY_NAME_BY_CODE = new Map(COUNTRIES.map((c) => [c.code, c.name]));
+const COUNTRY_CODE_BY_NAME = new Map(
+    COUNTRIES.map((c) => [c.name.trim().toLowerCase(), c.code])
+);
+
+/** Resolve ISO-3166 alpha-2 from a country name or 2-letter code. */
+export function countryNameToIso2(raw: string | null | undefined): string | null {
+    const s = String(raw ?? '').trim();
+    if (!s) return null;
+    const upper = s.toUpperCase();
+    if (/^[A-Z]{2}$/.test(upper) && isIso2Country(upper)) return upper;
+    return COUNTRY_CODE_BY_NAME.get(s.toLowerCase()) || null;
+}
 
 export function countryName(code: string): string {
     const iso = code.trim().toUpperCase();

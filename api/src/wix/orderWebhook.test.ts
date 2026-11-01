@@ -191,6 +191,23 @@ test('extractSelectedShipping falls back to priceSummary.shipping', () => {
     assert.equal(selected.selected_courier, 'prime_ddp');
 });
 
+test('needsOrderHydration when line items are missing from webhook payload', () => {
+    assert.equal(
+        needsOrderHydration({
+            order: {
+                buyerInfo: { email: 'buyer@example.com' },
+                lineItems: [],
+                shippingInfo: {
+                    title: 'Prime DDP',
+                    code: 'prime_ddp',
+                    cost: { price: { amount: '240', currency: 'THB' } },
+                },
+            },
+        }),
+        true
+    );
+});
+
 test('needsOrderHydration when email exists but selected shipping does not', () => {
     const payload = {
         order: {
@@ -212,6 +229,7 @@ test('needsOrderHydration when email exists but selected shipping does not', () 
     const withCost = {
         order: {
             ...(payload.order as Record<string, unknown>),
+            lineItems: [{ productName: { original: 'Item' }, quantity: 1, price: { amount: '10' } }],
             currency: 'THB',
             shippingInfo: {
                 ...(payload.order as { shippingInfo: Record<string, unknown> }).shippingInfo,

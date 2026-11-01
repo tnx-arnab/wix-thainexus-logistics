@@ -22,6 +22,19 @@ import {
     normalizeShipmentListResponse,
     paginateShipmentSummaries,
 } from './shipmentNormalize.js';
+import {
+    assertShipperReadyForCreate,
+    buildThaiNexusAddressRow,
+    clampActualWeightKgForApi,
+    clampDimensionCmForApi,
+    finalizeAddressForShipmentCreate,
+    validateConsigneeForCreate,
+} from './shipmentCreateValidation.js';
+import {
+    sanitizeShipmentItemsForApi,
+    toApiShipmentItemRows,
+    validateShipmentItemsForCreate,
+} from './shipmentItemsCreate.js';
 
 async function fetchThaiNexusShipmentList(
     token: string,
@@ -202,30 +215,39 @@ export interface CreateOrderShipmentsInput {
     startBoxIndex?: number;
 }
 
-function cleanAddress(addr: {
-    name?: string;
-    phone?: string;
-    email?: string;
-    street?: string;
-    city?: string;
-    state?: string;
-    postalCode?: string;
-    country?: string;
-}) {
-    const s = (v?: string) => (v ?? '').toString().trim();
-    const email = s(addr.email);
-    const looksLikeEmail = email.includes('@') && email.includes('.');
+function shipperAddressForCreate(
+    shipper: CreateOrderShipmentsInput['shipper']
+): ReturnType<typeof finalizeAddressForShipmentCreate> {
+    return finalizeAddressForShipmentCreate(
+        buildThaiNexusAddressRow({
+            name: shipper.name,
+            phone: shipper.phone,
+            street: shipper.street,
+            city: shipper.city,
+            state: shipper.state,
+            postalCode: shipper.postalCode,
+            country: shipper.country,
+        }),
+        { defaultCountry: shipper.country || 'TH' }
+    );
+}
 
-    return {
-        name: s(addr.name) || 'Customer',
-        phone: s(addr.phone) || '0000000000',
-        ...(looksLikeEmail ? { email } : {}),
-        address_line1: s(addr.street) || 'N/A',
-        city: s(addr.city),
-        state: s(addr.state),
-        postal_code: s(addr.postalCode),
-        country: s(addr.country) || 'TH',
-    };
+function consigneeAddressForCreate(
+    consignee: CreateOrderShipmentsInput['consignee']
+): ReturnType<typeof finalizeAddressForShipmentCreate> {
+    return finalizeAddressForShipmentCreate(
+        buildThaiNexusAddressRow({
+            name: consignee.name,
+            phone: consignee.phone,
+            street: consignee.street,
+            city: consignee.city,
+            state: consignee.state,
+            postalCode: consignee.postalCode,
+            country: consignee.country,
+            email: consignee.email,
+        }),
+        { defaultCountry: consignee.country || 'TH' }
+    );
 }
 
 export async function fillMissingItemHsCodes(
@@ -290,6 +312,8 @@ export async function createShipmentsForOrder(
         throw new Error('Thai Nexus API token is not configured');
     }
 
+    assertShipperReadyForCreate(input.shipper);
+
     const items = await fillMissingItemHsCodes(input.items, input.consignee.country);
     const config = await getConfig(input.instanceId);
     const packing = packItems(items, input.boxes, input.documentFlags || {}, {
@@ -301,8 +325,13 @@ export async function createShipmentsForOrder(
         throw new Error(packing.errors[0] || 'Could not pack order items');
     }
 
-    const shipperAddress = cleanAddress(input.shipper);
-    const consigneeAddress = cleanAddress(input.consignee);
+    const shipperAddress = shipperAddressForCreate(input.shipper);
+    const consigneeAddress = consigneeAddressForCreate(input.consignee);
+    const consigneeValidationError = validateConsigneeForCreate(consigneeAddress);
+    if (consigneeValidationError) {
+        throw new Error(`Consignee address incomplete: ${consigneeValidationError}`);
+    }
+
     const quoteSnapshot = await findCheckoutBoxQuotes(input.instanceId, {
         country: input.consignee.country,
         postcode: input.consignee.postalCode,
@@ -330,16 +359,21 @@ export async function createShipmentsForOrder(
             // PackedBox contract: dims are the chosen box's inner dims and
             // weight includes the empty box - matching the parcel the courier
             // collects, and matching what the checkout rate was quoted on.
-            const shipmentItems = box.shipmentItems || [];
+            let shipmentItems = sanitizeShipmentItemsForApi(box.shipmentItems || []);
+            const itemValidationError = validateShipmentItemsForCreate(shipmentItems);
+            if (itemValidationError) {
+                throw new Error(itemValidationError);
+            }
+            const apiItems = toApiShipmentItemRows(shipmentItems);
             const declaredTotal = totalDeclaredValue(shipmentItems);
             const response = await shipmentCrud(token, 'create', {
                 data: {
                     shipper_address: shipperAddress,
                     consignee_address: consigneeAddress,
-                    actual_weight_kg: box.weight,
-                    length_cm: box.length,
-                    width_cm: box.width,
-                    height_cm: box.height,
+                    actual_weight_kg: clampActualWeightKgForApi(box.weight),
+                    length_cm: clampDimensionCmForApi(box.length),
+                    width_cm: clampDimensionCmForApi(box.width),
+                    height_cm: clampDimensionCmForApi(box.height),
                     is_document: box.isDocument,
                     shipment_type: box.isDocument ? 'document' : 'parcel',
                     ...(serviceId
@@ -348,7 +382,7 @@ export async function createShipmentsForOrder(
                               service_type: serviceId,
                           }
                         : {}),
-                    shipment_items: shipmentItems,
+                    shipment_items: apiItems,
                     total_declared_value: declaredTotal,
                     total_currency: shipmentItems[0]?.currency_code || 'THB',
                     shipment_description: `Wix Order #${input.orderId} - Box ${index + 1}/${packing.boxes.length} (${box.boxName})`,

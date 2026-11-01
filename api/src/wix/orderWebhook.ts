@@ -27,6 +27,7 @@ import {
     lineOriginCountry,
     lineUnitDeclaredValue,
     lineUnitPriceAmount,
+    normalizeCountryIso2,
 } from './wixShippingDestination.js';
 
 function orderFromPayload(payload: Record<string, unknown>): Record<string, unknown> {
@@ -148,6 +149,12 @@ async function isThaiNexusShippingMethod(
     carrierId?: string,
     services?: ThaiNexusShippingService[]
 ): Promise<boolean> {
+    const listed = services ?? (await loadShippingServices(instanceId));
+
+    if (resolveShipmentServiceId(methodCode, methodTitle, listed)) {
+        return true;
+    }
+
     const appId = process.env.WIX_APP_ID?.trim();
     if (appId && carrierId && carrierId === appId) return true;
 
@@ -156,7 +163,6 @@ async function isThaiNexusShippingMethod(
         return true;
     }
 
-    const listed = services ?? (await loadShippingServices(instanceId));
     const names = listed.map((s) => normalizeServiceId(s.service_name || s.id || ''));
     const candidates = [methodTitle, methodCode]
         .filter(Boolean)
@@ -270,8 +276,18 @@ export function applySelectedShipping(
     };
 }
 
-/** Fetch the full Wix ecom order when checkout shipping or consignee email is missing. */
+/** Fetch the full Wix ecom order when checkout data or line items are incomplete. */
 export function needsOrderHydration(payload: Record<string, unknown>): boolean {
+    const order = orderFromPayload(payload);
+    const lines =
+        (order.lineItems as unknown[] | undefined) ||
+        (order.line_items as unknown[] | undefined) ||
+        [];
+    if (!lines.length) return true;
+
+    const method = extractShippingMethod(payload);
+    if (!method.code && !method.title && !method.carrierId) return true;
+
     if (!extractConsignee(payload).email) return true;
     return selectedShippingMissing(extractSelectedShipping(payload));
 }
@@ -296,7 +312,13 @@ export function extractShippingMethod(payload: Record<string, unknown>): {
     const title = String(
         carrier.title || carrier.name || shippingInfo.title || logistics.title || ''
     ).trim();
-    const code = String(carrier.code || shippingInfo.code || logistics.code || '').trim();
+    const code = String(
+        carrier.code ||
+            shippingInfo.code ||
+            logistics.code ||
+            (shippingInfo.shippingOption as Record<string, unknown> | undefined)?.code ||
+            ''
+    ).trim();
 
     return {
         title: title || undefined,
@@ -408,11 +430,17 @@ export function extractConsignee(payload: Record<string, unknown>) {
             order.buyerEmail,
             order.contactEmail
         ),
-        street: String(address.addressLine || address.street || ''),
+        street: String(
+            address.addressLine ||
+                address.addressLine1 ||
+                address.street ||
+                address.line1 ||
+                ''
+        ),
         city: String(address.city || ''),
         state: String(address.subdivision || address.state || ''),
-        postalCode: String(address.postalCode || ''),
-        country: String(address.country || 'TH'),
+        postalCode: String(address.postalCode || address.zip || ''),
+        country: normalizeCountryIso2(String(address.country || address.countryCode || 'TH')) || 'TH',
     };
 }
 
@@ -440,6 +468,17 @@ async function hydrateOrderFromWixApi(
     }
 }
 
+const CREATE_IN_PROGRESS_MS = 120_000;
+
+function isCreateInProgress(record: OrderShipmentRecord | null | undefined): boolean {
+    if (!record?.createInProgressAt) return false;
+    const started = Date.parse(record.createInProgressAt);
+    if (!Number.isFinite(started)) return false;
+    const created = (record.requestNumbers?.length ?? 0) > 0;
+    if (created) return false;
+    return Date.now() - started >= 0 && Date.now() - started < CREATE_IN_PROGRESS_MS;
+}
+
 /**
  * Process Wix order paid/created webhook. Always returns a reason code for logging.
  * Caller must respond HTTP 200.
@@ -465,34 +504,9 @@ export async function processOrderWebhook(
         }
         return { ok: false, reason: 'already-created' };
     }
-    if (shipmentRecord && shipmentRecord.complete === false) {
-        const createdMs = shipmentRecord.createdAt ? Date.parse(shipmentRecord.createdAt) : 0;
-        const ageMs = createdMs ? Date.now() - createdMs : 0;
-        const pending =
-            (shipmentRecord.requestNumbers?.length ?? 0) === 0 &&
-            ageMs >= 0 &&
-            ageMs < 120_000;
-        if (pending) {
-            return { ok: false, reason: 'processing' };
-        }
-    }
 
-    if (!shipmentRecord) {
-        await saveOrderShipments({
-            orderId: String(orderId),
-            instanceId,
-            requestNumbers: [],
-            shipments: [],
-            complete: false,
-            expectedBoxCount: 0,
-            createdAt: new Date().toISOString(),
-            ...extractSelectedShipping(payload),
-        });
-        shipmentRecord = await getOrderShipments(instanceId, orderId);
-    }
-
-    if (shipmentRecord && isOrderShipmentRecordComplete(shipmentRecord)) {
-        return { ok: false, reason: 'already-created' };
+    if (isCreateInProgress(shipmentRecord)) {
+        return { ok: false, reason: 'processing' };
     }
 
     const token = await getApiToken(instanceId);
@@ -526,6 +540,10 @@ export async function processOrderWebhook(
     const orderPayload = payload;
 
     let items = mapOrderLineItems(orderPayload);
+    if (!items.length) {
+        return { ok: false, reason: 'no-line-items' };
+    }
+
     const productIds = [
         ...new Set(items.flatMap((i) => rateItemCatalogIds(i)).filter(Boolean)),
     ];
@@ -593,7 +611,27 @@ export async function processOrderWebhook(
         return { ok: false, reason: 'ineligible-products' };
     }
 
+    const selected = extractSelectedShipping(orderPayload);
     const startBoxIndex = shipmentRecord?.requestNumbers?.length || 0;
+    const now = new Date().toISOString();
+
+    const inProgressRecord: OrderShipmentRecord = {
+        orderId: String(orderId),
+        instanceId,
+        requestNumbers: shipmentRecord?.requestNumbers || [],
+        shipments: shipmentRecord?.shipments || [],
+        complete: false,
+        expectedBoxCount: shipmentRecord?.expectedBoxCount ?? 0,
+        errors: shipmentRecord?.errors,
+        createdAt: shipmentRecord?.createdAt || now,
+        createInProgressAt: now,
+        shipping_amount: selected.shipping_amount ?? shipmentRecord?.shipping_amount ?? null,
+        shipping_currency: selected.shipping_currency ?? shipmentRecord?.shipping_currency ?? null,
+        selected_courier: selected.selected_courier ?? shipmentRecord?.selected_courier ?? null,
+        selected_courier_title:
+            selected.selected_courier_title ?? shipmentRecord?.selected_courier_title ?? null,
+    };
+    await saveOrderShipments(inProgressRecord);
 
     try {
         const result = await createShipmentsForOrder({
@@ -614,14 +652,10 @@ export async function processOrderWebhook(
             ...(shipmentRecord?.requestNumbers || []),
             ...result.created.map((c) => c.request_number),
         ];
-        const shipments = [
-            ...(shipmentRecord?.shipments || []),
-            ...result.created,
-        ];
+        const shipments = [...(shipmentRecord?.shipments || []), ...result.created];
         const complete =
             requestNumbers.length >= result.expectedBoxCount && result.errors.length === 0;
 
-        const selected = extractSelectedShipping(orderPayload);
         const record: OrderShipmentRecord = {
             orderId,
             instanceId,
@@ -631,7 +665,8 @@ export async function processOrderWebhook(
             errors: [...(shipmentRecord?.errors || []), ...result.errors],
             expectedBoxCount: result.expectedBoxCount,
             complete,
-            createdAt: shipmentRecord?.createdAt || new Date().toISOString(),
+            createdAt: shipmentRecord?.createdAt || now,
+            createInProgressAt: null,
             shipping_amount: selected.shipping_amount ?? shipmentRecord?.shipping_amount ?? null,
             shipping_currency: selected.shipping_currency ?? shipmentRecord?.shipping_currency ?? null,
             selected_courier: selected.selected_courier ?? shipmentRecord?.selected_courier ?? null,
@@ -646,6 +681,12 @@ export async function processOrderWebhook(
         };
     } catch (err) {
         const message = err instanceof Error ? err.message : 'shipment-create-failed';
+        await saveOrderShipments({
+            ...inProgressRecord,
+            createInProgressAt: null,
+            errors: [...(shipmentRecord?.errors || []), message],
+            complete: false,
+        }).catch(() => undefined);
         return { ok: false, reason: message };
     }
 }

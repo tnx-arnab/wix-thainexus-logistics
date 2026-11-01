@@ -91,21 +91,20 @@ CREATE TABLE IF NOT EXISTS thai_nexus_config (
                 name: 'Receiver',
                 phone: '0899999999',
                 street: '456 Main St',
-                city: 'Los Angeles',
+                city: '',
                 state: 'CA',
                 postalCode: '90001',
                 country: 'US',
             },
             items: [
                 {
-                    name: 'Test Item',
+                    name: 'AB',
                     quantity: 1,
-                    price: 50,
-                    weight: 0.5,
-                    length: 10,
-                    width: 10,
-                    height: 10,
-                    hs_code: '123456',
+                    discounted_price: { currency: 'THB', amount: '50' },
+                    weight: { value: 0.5 },
+                    length: { units: 'cm', value: 10 },
+                    width: { units: 'cm', value: 10 },
+                    height: { units: 'cm', value: 10 },
                 },
             ],
             boxes: [
@@ -134,6 +133,11 @@ CREATE TABLE IF NOT EXISTS thai_nexus_config (
             instance_id: 'test-inst-1',
             order_id: '10045',
         });
+        assert.equal(shipmentCrudPayload.data.consignee_address.city, 'CA');
+        const line = shipmentCrudPayload.data.shipment_items[0];
+        assert.equal(line.description, 'AB.');
+        assert.equal(line.hs_code, '999999');
+        assert.equal(line.currency_code, undefined);
     } finally {
         globalThis.fetch = originalFetch;
         clearWorkerDb();
