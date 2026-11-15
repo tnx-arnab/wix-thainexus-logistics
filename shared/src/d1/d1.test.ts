@@ -5,6 +5,7 @@ import { createMigratedMemoryD1 } from './memoryD1.js';
 import {
     deleteStore,
     getStore,
+    saveStoreSiteProfile,
     hasStoreUser,
     redactInstanceData,
     setStore,
@@ -44,6 +45,9 @@ CREATE TABLE IF NOT EXISTS stores (
     scope TEXT NOT NULL DEFAULT '',
     site_id TEXT,
     meta_site_id TEXT,
+    site_name TEXT,
+    site_url TEXT,
+    owner_email TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS store_users (
@@ -79,6 +83,13 @@ CREATE TABLE IF NOT EXISTS install_logs (
     ok INTEGER NOT NULL DEFAULT 0,
     message TEXT,
     data TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS checkout_box_quotes (
+    id TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS product_flags (
     instance_id TEXT NOT NULL,
@@ -145,6 +156,26 @@ test('stores: token refresh without site_id keeps the existing site_id', async (
     const row = await getStore('inst-a');
     assert.equal(row?.access_token, 'tok-b');
     assert.equal(row?.site_id, 'site-1');
+});
+
+test('stores: site profile fills empty fields and does not wipe a saved name', async () => {
+    setupDb();
+    await setStore(session('inst-a'));
+    await saveStoreSiteProfile('inst-a', {
+        siteName: 'Siri Shop',
+        siteUrl: 'https://siri.example/',
+        ownerEmail: 'siri@example.com',
+        siteId: 'site-from-wix',
+    });
+    const row = await getStore('inst-a');
+    assert.equal(row?.site_name, 'Siri Shop');
+    assert.equal(row?.site_url, 'https://siri.example/');
+    assert.equal(row?.owner_email, 'siri@example.com');
+    assert.equal(row?.site_id, 'site-1');
+    await saveStoreSiteProfile('inst-a', { siteName: 'Other', siteUrl: '', ownerEmail: '' });
+    const kept = await getStore('inst-a');
+    assert.equal(kept?.site_name, 'Siri Shop');
+    assert.equal(kept?.site_url, 'https://siri.example/');
 });
 
 test('stores: requireToken throws without access token', async () => {

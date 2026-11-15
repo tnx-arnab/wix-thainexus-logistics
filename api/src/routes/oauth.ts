@@ -86,6 +86,9 @@ async function handleOAuthCallback(req: Request, res: Response, routeLabel: stri
             instance_id: instanceId,
             site_id: install.siteId || tokens.siteId,
             meta_site_id: install.metaSiteId || tokens.metaSiteId,
+            site_name: install.siteName,
+            site_url: install.siteUrl,
+            owner_email: install.ownerEmail,
             user: { id: userId, email: 'merchant@wix.com' },
         });
 

@@ -10,6 +10,9 @@ export type StoreRow = {
     scope: string;
     site_id?: string | null;
     meta_site_id?: string | null;
+    site_name?: string | null;
+    site_url?: string | null;
+    owner_email?: string | null;
 };
 
 type StoreDbRow = {
@@ -19,6 +22,9 @@ type StoreDbRow = {
     scope: string;
     site_id: string | null;
     meta_site_id: string | null;
+    site_name: string | null;
+    site_url: string | null;
+    owner_email: string | null;
 };
 
 export async function setStore(session: SessionProps, options?: { requireToken?: boolean }) {
@@ -92,7 +98,8 @@ export async function getStoreToken(instanceId: string) {
 
 export async function getStore(instanceId: string): Promise<StoreRow | null> {
     const data = await first<StoreDbRow>(
-        `SELECT instance_id, access_token, refresh_token, scope, site_id, meta_site_id
+        `SELECT instance_id, access_token, refresh_token, scope, site_id, meta_site_id,
+                site_name, site_url, owner_email
          FROM stores WHERE instance_id = ?`,
         instanceId
     );
@@ -103,6 +110,48 @@ export async function getStore(instanceId: string): Promise<StoreRow | null> {
         access_token: decryptStoredSecret(data.access_token),
         refresh_token: data.refresh_token ? decryptStoredSecret(data.refresh_token) : data.refresh_token,
     };
+}
+
+export type StoreSiteProfile = {
+    siteId?: string;
+    metaSiteId?: string;
+    siteName?: string;
+    siteUrl?: string;
+    ownerEmail?: string;
+};
+
+/** Fill identity Wix returns at install. Empty values never wipe a name or URL already saved. */
+export async function saveStoreSiteProfile(instanceId: string, profile: StoreSiteProfile): Promise<void> {
+    await run(
+        `UPDATE stores
+         SET site_id = COALESCE(NULLIF(site_id, ''), ?),
+             meta_site_id = COALESCE(NULLIF(meta_site_id, ''), ?),
+             site_name = COALESCE(NULLIF(site_name, ''), ?),
+             site_url = COALESCE(NULLIF(site_url, ''), ?),
+             owner_email = COALESCE(NULLIF(owner_email, ''), ?),
+             updated_at = ?
+         WHERE instance_id = ?`,
+        profile.siteId || null,
+        profile.metaSiteId || null,
+        profile.siteName || null,
+        profile.siteUrl || null,
+        profile.ownerEmail || null,
+        new Date().toISOString(),
+        instanceId
+    );
+}
+
+export async function listStoresMissingSiteProfile(): Promise<string[]> {
+    const rows = await all<{ instance_id: string }>(
+        `SELECT instance_id FROM stores
+         WHERE instance_id NOT IN ('__install__', '__rate_trace__')
+           AND (
+             site_name IS NULL OR site_name = ''
+             OR site_url IS NULL OR site_url = ''
+             OR ((site_id IS NULL OR site_id = '') AND (meta_site_id IS NULL OR meta_site_id = ''))
+           )`
+    );
+    return rows.map((row) => row.instance_id).filter(Boolean);
 }
 
 export async function saveStoreSiteIds(

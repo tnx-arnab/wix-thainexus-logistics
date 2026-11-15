@@ -140,6 +140,14 @@ export default {
         const url = new URL(request.url);
         const { pathname } = url;
 
+        const localHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+        if (pathname === '/api/internal/refresh-site-profiles' && localHost) {
+            bindWorkerDb(env.DB);
+            const { refreshIncompleteStoreProfiles } = await import('./wix/siteProfile.js');
+            const result = await refreshIncompleteStoreProfiles();
+            return Response.json(result);
+        }
+
         const isApi =
             pathname.startsWith('/api') ||
             pathname === '/health' ||
@@ -203,6 +211,12 @@ export default {
     ): Promise<void> {
         hydrateProcessEnv(env);
         bindWorkerDb(env.DB);
+        try {
+            const { refreshIncompleteStoreProfiles } = await import('./wix/siteProfile.js');
+            await refreshIncompleteStoreProfiles();
+        } catch (err) {
+            console.warn('[wix-site-profile]', err instanceof Error ? err.message : err);
+        }
         const { runHourlyTrackingSync } = await import('./trackingCron.js');
         await runHourlyTrackingSync();
     },

@@ -202,28 +202,85 @@ export async function fetchWixTokenInfo(accessToken: string): Promise<{
     }
 }
 
-/** Get App Instance using the just-exchanged access token (custom auth). */
-export async function fetchWixAppInstance(accessToken: string): Promise<{
+export type WixAppInstance = {
     instanceId?: string;
     siteId?: string;
     metaSiteId?: string;
-}> {
+    siteName?: string;
+    siteUrl?: string;
+    ownerEmail?: string;
+};
+
+function cleanText(value: unknown, max = 200): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > max) return undefined;
+    return trimmed;
+}
+
+/** Public http(s) URL only. Drops userinfo and non-http schemes. */
+export function publicSiteUrl(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 500 || /\s/.test(trimmed)) return undefined;
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     try {
-        const res = await fetch('https://www.wixapis.com/apps/v1/instance', {
-            headers: { Authorization: accessToken },
-        });
-        const data = await readJson(res);
-        if (!res.ok) return {};
-        const instance = (data.instance || {}) as Record<string, unknown>;
-        const site = (data.site || {}) as Record<string, unknown>;
-        const siteId = dashboardSiteId(site.siteId);
-        const metaSiteId =
-            dashboardSiteId(site.metaSiteId) || dashboardSiteId(site.meta_site_id) || siteId;
-        return {
-            instanceId: asInstanceId(instance.instanceId) || asInstanceId(data.instanceId),
-            siteId,
-            metaSiteId,
-        };
+        const url = new URL(candidate);
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
+        if (url.username || url.password) return undefined;
+        if (!url.hostname.includes('.')) return undefined;
+        return url.toString();
+    } catch {
+        return undefined;
+    }
+}
+
+function ownerEmail(site: Record<string, unknown>): string | undefined {
+    const ownerInfo =
+        site.ownerInfo && typeof site.ownerInfo === 'object'
+            ? (site.ownerInfo as Record<string, unknown>)
+            : undefined;
+    const raw = cleanText(site.ownerEmail) || cleanText(ownerInfo?.email);
+    if (!raw || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return undefined;
+    return raw.toLowerCase();
+}
+
+function siteDisplayName(site: Record<string, unknown>): string | undefined {
+    return cleanText(site.siteDisplayName) || cleanText(site.displayName) || cleanText(site.siteName);
+}
+
+function instanceFromPayload(data: Record<string, unknown>): WixAppInstance {
+    const instance = (data.instance || {}) as Record<string, unknown>;
+    const site = (data.site || {}) as Record<string, unknown>;
+    const siteId = dashboardSiteId(site.siteId);
+    const metaSiteId = dashboardSiteId(site.metaSiteId) || dashboardSiteId(site.meta_site_id) || siteId;
+    return {
+        instanceId: asInstanceId(instance.instanceId) || asInstanceId(data.instanceId),
+        siteId,
+        metaSiteId,
+        siteName: siteDisplayName(site),
+        siteUrl: publicSiteUrl(site.url) || publicSiteUrl(site.siteUrl),
+        ownerEmail: ownerEmail(site),
+    };
+}
+
+/** Get App Instance using the just-exchanged access token (custom auth). */
+export async function fetchWixAppInstance(accessToken: string): Promise<WixAppInstance> {
+    const token = accessToken.trim();
+    if (!token) return {};
+    const authorizations = token.toLowerCase().startsWith('bearer ')
+        ? [token]
+        : [token, `Bearer ${token}`];
+    try {
+        for (const authorization of authorizations) {
+            const res = await fetch('https://www.wixapis.com/apps/v1/instance', {
+                headers: { Authorization: authorization },
+            });
+            const data = await readJson(res);
+            if (!res.ok) continue;
+            return instanceFromPayload(data);
+        }
+        return {};
     } catch {
         return {};
     }
@@ -237,7 +294,14 @@ export async function resolveWixInstallIdentity(
     tokens: WixTokenResponse,
     authCode: string,
     query: { instanceId?: unknown; instance_id?: unknown }
-): Promise<{ instanceId: string; siteId?: string; metaSiteId?: string }> {
+): Promise<{
+    instanceId: string;
+    siteId?: string;
+    metaSiteId?: string;
+    siteName?: string;
+    siteUrl?: string;
+    ownerEmail?: string;
+}> {
     const tokenInfo = await fetchWixTokenInfo(tokens.access_token);
     const appInstance = await fetchWixAppInstance(tokens.access_token);
     const { instanceIdFromAccessToken } = await import('./tokens.js');
@@ -261,6 +325,9 @@ export async function resolveWixInstallIdentity(
         instanceId,
         siteId: tokens.siteId || tokenInfo.siteId || appInstance.siteId,
         metaSiteId: tokens.metaSiteId || appInstance.metaSiteId,
+        siteName: appInstance.siteName,
+        siteUrl: appInstance.siteUrl,
+        ownerEmail: appInstance.ownerEmail,
     };
 }
 

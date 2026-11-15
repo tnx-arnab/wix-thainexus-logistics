@@ -133,7 +133,12 @@ export async function getSession(req: Request): Promise<SessionContext | null> {
     const store = await getStore(instanceId);
     const accessToken = await getValidAccessToken(instanceId);
     if (!accessToken) return null;
-    const linked = store || (await getStore(instanceId));
+    let linked = store || (await getStore(instanceId));
+    const { rememberStoreSiteProfile, storeNeedsIdentity } = await import('./wix/siteProfile.js');
+    if (storeNeedsIdentity(linked)) {
+        await rememberStoreSiteProfile(instanceId, accessToken);
+        linked = (await getStore(instanceId)) || linked;
+    }
 
     const userId = String(user.id);
     if (hasUserId(user)) {
@@ -163,6 +168,8 @@ export async function provisionEasyOAuthInstance(
 ): Promise<string | null> {
     const accessToken = await getValidAccessToken(instanceId);
     if (!accessToken) return null;
+    const { rememberStoreSiteProfile } = await import('./wix/siteProfile.js');
+    await rememberStoreSiteProfile(instanceId, accessToken);
     if (originInstanceId) {
         await copyConfigIfMissing(originInstanceId, instanceId);
     }
@@ -176,6 +183,30 @@ export async function persistOAuthSession(
     const session = normalizeSessionFromWix(raw);
     await setStore(session, { requireToken: true });
     await setStoreUser(session);
+    const instanceId = session.instance_id;
+    if (!instanceId) return;
+    const profile = raw as {
+        site_name?: unknown;
+        site_url?: unknown;
+        owner_email?: unknown;
+    };
+    const { saveStoreSiteProfile } = await import('@thai-nexus/shared');
+    const { rememberStoreSiteProfile } = await import('./wix/siteProfile.js');
+    const siteName = typeof profile.site_name === 'string' ? profile.site_name : undefined;
+    const siteUrl = typeof profile.site_url === 'string' ? profile.site_url : undefined;
+    const ownerEmail = typeof profile.owner_email === 'string' ? profile.owner_email : undefined;
+    if (siteName || siteUrl || ownerEmail || session.site_id || session.meta_site_id) {
+        await saveStoreSiteProfile(instanceId, {
+            siteId: session.site_id,
+            metaSiteId: session.meta_site_id,
+            siteName,
+            siteUrl,
+            ownerEmail,
+        });
+    }
+    if ((!siteName || !siteUrl) && session.access_token) {
+        await rememberStoreSiteProfile(instanceId, session.access_token);
+    }
 }
 
 /**

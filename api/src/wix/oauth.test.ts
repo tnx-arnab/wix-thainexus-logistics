@@ -102,6 +102,59 @@ test('fetchWixAppInstance keeps an explicit dashboard metaSiteId', async () => {
     );
 });
 
+test('fetchWixAppInstance reads the site name, public URL, and owner email', async () => {
+    await withMockedFetch(
+        (url) => {
+            if (url.includes('/apps/v1/instance')) {
+                return {
+                    ok: true,
+                    body: {
+                        site: {
+                            siteId: '1d04f781-0249-402a-9e51-dc3c9cb7754e',
+                            siteDisplayName: 'Siri Shop',
+                            url: 'siri.example',
+                            ownerInfo: { email: 'Siri@Example.com' },
+                        },
+                    },
+                };
+            }
+            return { ok: false, body: {} };
+        },
+        async () => {
+            const appInstance = await fetchWixAppInstance('token');
+            assert.equal(appInstance.siteName, 'Siri Shop');
+            assert.equal(appInstance.siteUrl, 'https://siri.example/');
+            assert.equal(appInstance.ownerEmail, 'siri@example.com');
+        }
+    );
+});
+
+test('fetchWixAppInstance drops unsafe URLs and retries with Bearer', async () => {
+    await withMockedFetch(
+        (url, init) => {
+            if (!url.includes('/apps/v1/instance')) return { ok: false, body: {} };
+            const headers = new Headers(init?.headers);
+            if (headers.get('authorization') === 'token') return { ok: false, body: {} };
+            return {
+                ok: true,
+                body: {
+                    site: {
+                        siteDisplayName: 'Siri Shop',
+                        url: 'javascript:alert(1)',
+                        ownerEmail: 'not an email',
+                    },
+                },
+            };
+        },
+        async () => {
+            const appInstance = await fetchWixAppInstance('token');
+            assert.equal(appInstance.siteName, 'Siri Shop');
+            assert.equal(appInstance.siteUrl, undefined);
+            assert.equal(appInstance.ownerEmail, undefined);
+        }
+    );
+});
+
 test('fetchWixAppInstance uses site.siteId as the dashboard id', async () => {
     await withMockedFetch(
         (url) => {
