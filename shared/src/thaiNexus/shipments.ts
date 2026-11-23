@@ -368,6 +368,7 @@ export async function createShipmentsForOrder(
             const declaredTotal = totalDeclaredValue(shipmentItems);
             const response = await shipmentCrud(token, 'create', {
                 data: {
+                    status: 'draft',
                     shipper_address: shipperAddress,
                     consignee_address: consigneeAddress,
                     actual_weight_kg: clampActualWeightKgForApi(box.weight),
